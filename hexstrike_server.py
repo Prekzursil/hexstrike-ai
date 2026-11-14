@@ -28,7 +28,6 @@ import traceback
 import threading
 import time
 import hashlib
-import pickle
 import base64
 import queue
 from concurrent.futures import ThreadPoolExecutor
@@ -37,7 +36,6 @@ from typing import Dict, Any, Optional
 from collections import OrderedDict
 import shutil
 import venv
-import zipfile
 from pathlib import Path
 from flask import Flask, request, jsonify
 import psutil
@@ -48,22 +46,12 @@ import socket
 import urllib.parse
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Set, Tuple
-import asyncio
-import aiohttp
-from urllib.parse import urljoin, urlparse, parse_qs
+from typing import List, Set
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
-import selenium
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
-import mitmproxy
-from mitmproxy import http as mitmhttp
-from mitmproxy.tools.dump import DumpMaster
-from mitmproxy.options import Options as MitmOptions
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
@@ -89,6 +77,18 @@ except PermissionError:
         ]
     )
 logger = logging.getLogger(__name__)
+
+def _sanitize_log(value) -> str:
+    """Render a value for logging with CR/LF replaced by spaces
+    to prevent log forging (CodeQL py/log-injection: .replace
+    line-break chains are the query-recognized sanitizer)."""
+    text = str(value)
+    return (
+        text.replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
+
 
 # Flask app configuration
 app = Flask(__name__)
@@ -295,7 +295,6 @@ class ModernVisualEngine:
         for pid, proc_info in processes.items():
             status = proc_info.get('status', 'unknown')
             command = proc_info.get('command', 'unknown')[:50] + "..." if len(proc_info.get('command', '')) > 50 else proc_info.get('command', 'unknown')
-            duration = proc_info.get('duration', 0)
 
             status_color = ModernVisualEngine.COLORS['ACCENT_LINE'] if status == 'running' else ModernVisualEngine.COLORS['HACKER_RED']
 
@@ -874,7 +873,7 @@ class IntelligentDecisionEngine:
                 ip = socket.gethostbyname(hostname)
                 return [ip]
         except Exception:
-            pass
+            logger.debug("Suppressed non-fatal error", exc_info=True)
         return []
 
     def _detect_technologies(self, target: str) -> List[TechnologyStack]:
@@ -1550,10 +1549,6 @@ decision_engine = IntelligentDecisionEngine()
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Callable, Union
-import traceback
-import time
-import random
 
 class ErrorType(Enum):
     """Enumeration of different error types for intelligent handling"""
@@ -2008,7 +2003,7 @@ class IntelligentErrorHandler:
         best_strategy = self._select_best_strategy(strategies, error_context)
 
         error_message = f'{error_type.value} - Applying {best_strategy.action.value}'
-        logger.warning(f"{ModernVisualEngine.format_error_card('RECOVERY', tool, error_message)}")
+        logger.warning(f"{_sanitize_log(ModernVisualEngine.format_error_card('RECOVERY', tool, error_message))}")
 
         return best_strategy
 
@@ -2060,7 +2055,7 @@ class IntelligentErrorHandler:
         adjusted_params.update(adjustments)
 
         adjustment_info = f'Parameters adjusted: {adjustments}'
-        logger.info(f"{ModernVisualEngine.format_tool_status(tool, 'RECOVERY', adjustment_info)}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status(tool, 'RECOVERY', adjustment_info))}")
 
         return adjusted_params
 
@@ -2105,9 +2100,9 @@ class IntelligentErrorHandler:
         }
 
         # Log escalation with enhanced formatting
-        logger.error(f"{ModernVisualEngine.format_error_card('CRITICAL', context.tool_name, context.error_message, 'HUMAN ESCALATION REQUIRED')}")
-        logger.error(f"{ModernVisualEngine.format_highlighted_text('ESCALATION DETAILS', 'RED')}")
-        logger.error(f"{json.dumps(escalation_data, indent=2)}")
+        logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('CRITICAL', context.tool_name, context.error_message, 'HUMAN ESCALATION REQUIRED'))}")
+        logger.error(f"{_sanitize_log(ModernVisualEngine.format_highlighted_text('ESCALATION DETAILS', 'RED'))}")
+        logger.error(f"{_sanitize_log(json.dumps(escalation_data, indent=2))}")
 
         return escalation_data
 
@@ -2255,7 +2250,7 @@ class GracefulDegradation:
         for chain in chains:
             viable_chain = [tool for tool in chain if tool not in failed_tools]
             if viable_chain:
-                logger.info(f"🔄 Fallback chain for {operation}: {viable_chain}")
+                logger.info(f"🔄 Fallback chain for {_sanitize_log(operation)}: {_sanitize_log(viable_chain)}")
                 return viable_chain
 
         # If no viable chain found, return basic fallback
@@ -2267,7 +2262,7 @@ class GracefulDegradation:
         }
 
         fallback = basic_fallbacks.get(operation, ["manual_testing"])
-        logger.warning(f"⚠️  Using basic fallback for {operation}: {fallback}")
+        logger.warning(f"⚠️  Using basic fallback for {_sanitize_log(operation)}: {_sanitize_log(fallback)}")
         return fallback
 
     def handle_partial_failure(self, operation: str, partial_results: Dict[str, Any],
@@ -2301,7 +2296,7 @@ class GracefulDegradation:
             operation, failed_components
         )
 
-        logger.info(f"🛡️  Graceful degradation applied for {operation}")
+        logger.info(f"🛡️  Graceful degradation applied for {_sanitize_log(operation)}")
         return enhanced_results
 
     def _basic_port_check(self, target: str) -> List[int]:
@@ -3912,7 +3907,7 @@ class CTFChallengeAutomator:
         except Exception as e:
             result["status"] = "error"
             result["error"] = str(e)
-            logger.error(f"Error in auto-solve for {challenge.name}: {str(e)}")
+            logger.error(f"Error in auto-solve for {_sanitize_log(challenge.name)}: {_sanitize_log(str(e))}")
 
         return result
 
@@ -3935,7 +3930,6 @@ class CTFChallengeAutomator:
         for tool in tools:
             try:
                 if tool != "manual":
-                    command = ctf_tools.get_tool_command(tool, challenge.target or challenge.name)
                     # In a real implementation, this would execute the command
                     step_result["tools_used"].append(tool)
                     step_result["output"] += f"[{tool}] Executed successfully\n"
@@ -4593,7 +4587,7 @@ class PerformanceMonitor:
                 "timestamp": time.time()
             }
         except Exception as e:
-            logger.error(f"Error monitoring system resources: {str(e)}")
+            logger.error(f"Error monitoring system resources: {_sanitize_log(str(e))}")
             return {}
 
     def optimize_based_on_resources(self, current_params: Dict[str, Any], resource_usage: Dict[str, float]) -> Dict[str, Any]:
@@ -4916,7 +4910,7 @@ class ProcessPool:
             self.active_tasks[task_id] = task
             self.task_queue.put(task)
 
-        logger.info(f"📋 Task submitted to pool: {task_id}")
+        logger.info(f"📋 Task submitted to pool: {_sanitize_log(task_id)}")
         return task_id
 
     def get_task_result(self, task_id: str) -> Dict[str, Any]:
@@ -4931,7 +4925,7 @@ class ProcessPool:
 
     def _worker_thread(self, worker_id: int):
         """Worker thread that processes tasks"""
-        logger.info(f"🔧 Process pool worker {worker_id} started")
+        logger.info(f"🔧 Process pool worker {_sanitize_log(worker_id)} started")
 
         while True:
             try:
@@ -4976,7 +4970,7 @@ class ProcessPool:
                         if task_id in self.active_tasks:
                             del self.active_tasks[task_id]
 
-                    logger.info(f"✅ Task completed: {task_id} in {execution_time:.2f}s")
+                    logger.info(f"✅ Task completed: {_sanitize_log(task_id)} in {_sanitize_log(format(execution_time, '.2f'))}s")
 
                 except Exception as e:
                     # Handle task failure
@@ -4994,7 +4988,7 @@ class ProcessPool:
                         if task_id in self.active_tasks:
                             del self.active_tasks[task_id]
 
-                    logger.error(f"❌ Task failed: {task_id} - {str(e)}")
+                    logger.error(f"❌ Task failed: {_sanitize_log(task_id)} - {_sanitize_log(str(e))}")
 
                 self.task_queue.task_done()
 
@@ -5002,7 +4996,7 @@ class ProcessPool:
                 # No tasks available, continue waiting
                 continue
             except Exception as e:
-                logger.error(f"💥 Worker {worker_id} error: {str(e)}")
+                logger.error(f"💥 Worker {_sanitize_log(worker_id)} error: {_sanitize_log(str(e))}")
 
     def _monitor_performance(self):
         """Monitor pool performance and auto-scale"""
@@ -5026,13 +5020,13 @@ class ProcessPool:
                     # Scale up
                     new_workers = min(2, self.max_workers - active_workers)
                     self._scale_up(new_workers)
-                    logger.info(f"📈 Scaled up process pool: +{new_workers} workers (total: {active_workers + new_workers})")
+                    logger.info(f"📈 Scaled up process pool: +{_sanitize_log(new_workers)} workers (total: {_sanitize_log(active_workers + new_workers)})")
 
                 elif load_ratio < 0.3 and active_workers > self.min_workers:
                     # Scale down
                     workers_to_remove = min(1, active_workers - self.min_workers)
                     self._scale_down(workers_to_remove)
-                    logger.info(f"📉 Scaled down process pool: -{workers_to_remove} workers (total: {active_workers - workers_to_remove})")
+                    logger.info(f"📉 Scaled down process pool: -{_sanitize_log(workers_to_remove)} workers (total: {_sanitize_log(active_workers - workers_to_remove)})")
 
                 # Update performance metrics
                 try:
@@ -5044,10 +5038,10 @@ class ProcessPool:
                         self.performance_metrics["memory_usage"] = memory_info.percent
 
                 except Exception:
-                    pass  # Ignore psutil errors
+                    logger.debug("Suppressed non-fatal error", exc_info=True)
 
             except Exception as e:
-                logger.error(f"💥 Pool monitor error: {str(e)}")
+                logger.error(f"💥 Pool monitor error: {_sanitize_log(str(e))}")
 
     def _scale_up(self, count: int):
         """Add workers to the pool"""
@@ -5166,7 +5160,7 @@ class AdvancedCache:
         # Find least recently used key
         lru_key = min(self.access_times.keys(), key=lambda k: self.access_times[k])
         self._remove_key(lru_key)
-        logger.debug(f"🗑️ Evicted LRU cache entry: {lru_key}")
+        logger.debug(f"🗑️ Evicted LRU cache entry: {_sanitize_log(lru_key)}")
 
     def _cleanup_expired(self) -> None:
         """Cleanup expired entries periodically"""
@@ -5185,10 +5179,10 @@ class AdvancedCache:
                         self._remove_key(key)
 
                 if expired_keys:
-                    logger.debug(f"🧹 Cleaned up {len(expired_keys)} expired cache entries")
+                    logger.debug(f"🧹 Cleaned up {_sanitize_log(len(expired_keys))} expired cache entries")
 
             except Exception as e:
-                logger.error(f"💥 Cache cleanup error: {str(e)}")
+                logger.error(f"💥 Cache cleanup error: {_sanitize_log(str(e))}")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
@@ -5241,7 +5235,7 @@ class EnhancedProcessManager:
         cache_key = f"cmd_result_{hash(command)}"
         cached_result = self.cache.get(cache_key)
         if cached_result and context and context.get("use_cache", True):
-            logger.info(f"📋 Using cached result for command: {command[:50]}...")
+            logger.info(f"📋 Using cached result for command: {_sanitize_log(command[:50])}...")
             return cached_result
 
         # Submit to process pool
@@ -5354,17 +5348,17 @@ class EnhancedProcessManager:
                 try:
                     process.wait(timeout=timeout)
                     process_info["status"] = "terminated_gracefully"
-                    logger.info(f"✅ Process {pid} terminated gracefully")
+                    logger.info(f"✅ Process {_sanitize_log(pid)} terminated gracefully")
                     return True
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful termination fails
                     process.kill()
                     process_info["status"] = "force_killed"
-                    logger.warning(f"⚠️ Process {pid} force killed after timeout")
+                    logger.warning(f"⚠️ Process {_sanitize_log(pid)} force killed after timeout")
                     return True
 
         except Exception as e:
-            logger.error(f"💥 Error terminating process {pid}: {str(e)}")
+            logger.error(f"💥 Error terminating process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
             return False
 
     def _monitor_system(self):
@@ -5384,7 +5378,7 @@ class EnhancedProcessManager:
                 self.performance_dashboard.update_system_metrics(resource_usage)
 
             except Exception as e:
-                logger.error(f"💥 System monitoring error: {str(e)}")
+                logger.error(f"💥 System monitoring error: {_sanitize_log(str(e))}")
 
     def _auto_scale_based_on_resources(self, resource_usage: Dict[str, float]):
         """Auto-scale process pool based on resource usage"""
@@ -5397,7 +5391,7 @@ class EnhancedProcessManager:
 
             if current_workers > self.process_pool.min_workers:
                 self.process_pool._scale_down(1)
-                logger.info(f"📉 Auto-scaled down due to high resource usage: CPU {resource_usage['cpu_percent']:.1f}%, Memory {resource_usage['memory_percent']:.1f}%")
+                logger.info(f"📉 Auto-scaled down due to high resource usage: CPU {_sanitize_log(format(resource_usage['cpu_percent'], '.1f'))}%, Memory {_sanitize_log(format(resource_usage['memory_percent'], '.1f'))}%")
 
         # Scale up if resources are available and there's demand
         elif (resource_usage["cpu_percent"] < 60 and
@@ -5456,7 +5450,7 @@ class ResourceMonitor:
             return usage
 
         except Exception as e:
-            logger.error(f"💥 Error getting resource usage: {str(e)}")
+            logger.error(f"💥 Error getting resource usage: {_sanitize_log(str(e))}")
             return {
                 "cpu_percent": 0,
                 "memory_percent": 0,
@@ -5590,7 +5584,7 @@ class ProcessManager:
                 "last_output": "",
                 "bytes_processed": 0
             }
-            logger.info(f"🆔 REGISTERED: Process {pid} - {command[:50]}...")
+            logger.info(f"🆔 REGISTERED: Process {_sanitize_log(pid)} - {_sanitize_log(command[:50])}...")
 
     @staticmethod
     def update_process_progress(pid, progress, last_output="", bytes_processed=0):
@@ -5625,10 +5619,10 @@ class ProcessManager:
                             process_obj.kill()  # Force kill if still running
 
                         active_processes[pid]["status"] = "terminated"
-                        logger.warning(f"🛑 TERMINATED: Process {pid} - {process_info['command'][:50]}...")
+                        logger.warning(f"🛑 TERMINATED: Process {_sanitize_log(pid)} - {_sanitize_log(process_info['command'][:50])}...")
                         return True
                 except Exception as e:
-                    logger.error(f"💥 Error terminating process {pid}: {str(e)}")
+                    logger.error(f"💥 Error terminating process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
                     return False
             return False
 
@@ -5638,7 +5632,7 @@ class ProcessManager:
         with process_lock:
             if pid in active_processes:
                 process_info = active_processes.pop(pid)
-                logger.info(f"🧹 CLEANUP: Process {pid} removed from registry")
+                logger.info(f"🧹 CLEANUP: Process {_sanitize_log(pid)} removed from registry")
                 return process_info
             return None
 
@@ -5664,10 +5658,10 @@ class ProcessManager:
                     if process_obj and process_obj.poll() is None:
                         os.kill(pid, signal.SIGSTOP)
                         active_processes[pid]["status"] = "paused"
-                        logger.info(f"⏸️  PAUSED: Process {pid}")
+                        logger.info(f"⏸️  PAUSED: Process {_sanitize_log(pid)}")
                         return True
                 except Exception as e:
-                    logger.error(f"💥 Error pausing process {pid}: {str(e)}")
+                    logger.error(f"💥 Error pausing process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
             return False
 
     @staticmethod
@@ -5680,10 +5674,10 @@ class ProcessManager:
                     if process_obj and process_obj.poll() is None:
                         os.kill(pid, signal.SIGCONT)
                         active_processes[pid]["status"] = "running"
-                        logger.info(f"▶️  RESUMED: Process {pid}")
+                        logger.info(f"▶️  RESUMED: Process {_sanitize_log(pid)}")
                         return True
                 except Exception as e:
-                    logger.error(f"💥 Error resuming process {pid}: {str(e)}")
+                    logger.error(f"💥 Error resuming process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
             return False
 
 # Enhanced color codes and visual elements for modern terminal output
@@ -5713,7 +5707,7 @@ class PythonEnvironmentManager:
         """Create a new virtual environment"""
         env_path = self.base_dir / env_name
         if not env_path.exists():
-            logger.info(f"🐍 Creating virtual environment: {env_name}")
+            logger.info(f"🐍 Creating virtual environment: {_sanitize_log(env_name)}")
             venv.create(env_path, with_pip=True)
         return env_path
 
@@ -5726,13 +5720,13 @@ class PythonEnvironmentManager:
             result = subprocess.run([str(pip_path), "install", package],
                                   capture_output=True, text=True, timeout=300)
             if result.returncode == 0:
-                logger.info(f"📦 Installed package {package} in {env_name}")
+                logger.info(f"📦 Installed package {_sanitize_log(package)} in {_sanitize_log(env_name)}")
                 return True
             else:
-                logger.error(f"❌ Failed to install {package}: {result.stderr}")
+                logger.error(f"❌ Failed to install {_sanitize_log(package)}: {_sanitize_log(result.stderr)}")
                 return False
         except Exception as e:
-            logger.error(f"💥 Error installing package {package}: {e}")
+            logger.error(f"💥 Error installing package {_sanitize_log(package)}: {_sanitize_log(e)}")
             return False
 
     def get_python_path(self, env_name: str) -> str:
@@ -5955,7 +5949,7 @@ class CVEIntelligenceManager:
     def fetch_latest_cves(self, hours=24, severity_filter="HIGH,CRITICAL"):
         """Fetch latest CVEs from NVD and other real sources"""
         try:
-            logger.info(f"🔍 Fetching CVEs from last {hours} hours with severity: {severity_filter}")
+            logger.info(f"🔍 Fetching CVEs from last {_sanitize_log(hours)} hours with severity: {_sanitize_log(severity_filter)}")
             
             # Calculate date range for CVE search
             end_date = datetime.now()
@@ -5984,14 +5978,14 @@ class CVEIntelligenceManager:
                 # Add delay to respect NVD rate limits (6 seconds between requests for unauthenticated)
                 import time
                 
-                logger.info(f"🌐 Querying NVD API: {nvd_url}")
+                logger.info(f"🌐 Querying NVD API: {_sanitize_log(nvd_url)}")
                 response = requests.get(nvd_url, params=params, timeout=30)
                 
                 if response.status_code == 200:
                     nvd_data = response.json()
                     vulnerabilities = nvd_data.get('vulnerabilities', [])
                     
-                    logger.info(f"📊 Retrieved {len(vulnerabilities)} vulnerabilities from NVD")
+                    logger.info(f"📊 Retrieved {_sanitize_log(len(vulnerabilities))} vulnerabilities from NVD")
                     
                     for vuln_item in vulnerabilities:
                         cve_data = vuln_item.get('cve', {})
@@ -6075,10 +6069,10 @@ class CVEIntelligenceManager:
                         all_cves.append(cve_entry)
                 
                 else:
-                    logger.warning(f"⚠️ NVD API returned status code: {response.status_code}")
+                    logger.warning(f"⚠️ NVD API returned status code: {_sanitize_log(response.status_code)}")
                     
             except requests.exceptions.RequestException as e:
-                logger.error(f"❌ Error querying NVD API: {str(e)}")
+                logger.error(f"❌ Error querying NVD API: {_sanitize_log(str(e))}")
             
             # If no CVEs found from NVD, try alternative sources or provide informative response
             if not all_cves:
@@ -6133,9 +6127,9 @@ class CVEIntelligenceManager:
                             all_cves.append(cve_entry)
                             
                 except Exception as broader_e:
-                    logger.warning(f"⚠️ Broader search also failed: {str(broader_e)}")
+                    logger.warning(f"⚠️ Broader search also failed: {_sanitize_log(str(broader_e))}")
             
-            logger.info(f"✅ Successfully retrieved {len(all_cves)} CVEs")
+            logger.info(f"✅ Successfully retrieved {_sanitize_log(len(all_cves))} CVEs")
             
             return {
                 "success": True,
@@ -6148,7 +6142,7 @@ class CVEIntelligenceManager:
             }
             
         except Exception as e:
-            logger.error(f"💥 Error fetching CVEs: {str(e)}")
+            logger.error(f"💥 Error fetching CVEs: {_sanitize_log(str(e))}")
             return {
                 "success": False,
                 "error": str(e),
@@ -6159,19 +6153,18 @@ class CVEIntelligenceManager:
     def analyze_cve_exploitability(self, cve_id):
         """Analyze CVE exploitability using real CVE data and threat intelligence"""
         try:
-            logger.info(f"🔬 Analyzing exploitability for {cve_id}")
+            logger.info(f"🔬 Analyzing exploitability for {_sanitize_log(cve_id)}")
             
             # Fetch detailed CVE data from NVD
             nvd_url = f"https://services.nvd.nist.gov/rest/json/cves/2.0"
             params = {'cveId': cve_id}
             
-            import time
             
             try:
                 response = requests.get(nvd_url, params=params, timeout=30)
                 
                 if response.status_code != 200:
-                    logger.warning(f"⚠️ NVD API returned status {response.status_code} for {cve_id}")
+                    logger.warning(f"⚠️ NVD API returned status {_sanitize_log(response.status_code)} for {_sanitize_log(cve_id)}")
                     return {
                         "success": False,
                         "error": f"Failed to fetch CVE data: HTTP {response.status_code}",
@@ -6182,7 +6175,7 @@ class CVEIntelligenceManager:
                 vulnerabilities = nvd_data.get('vulnerabilities', [])
                 
                 if not vulnerabilities:
-                    logger.warning(f"⚠️ No data found for CVE {cve_id}")
+                    logger.warning(f"⚠️ No data found for CVE {_sanitize_log(cve_id)}")
                     return {
                         "success": False,
                         "error": f"CVE {cve_id} not found in NVD database",
@@ -6223,8 +6216,6 @@ class CVEIntelligenceManager:
                     exploitability_subscore = cvss_data.get('exploitabilityScore', 0.0)
                 
                 # Calculate exploitability score based on CVSS metrics
-                exploitability_score = 0.0
-                
                 # Base exploitability on CVSS exploitability subscore if available
                 if exploitability_subscore > 0:
                     exploitability_score = min(exploitability_subscore / 3.9, 1.0)  # Normalize to 0-1
@@ -6374,12 +6365,12 @@ class CVEIntelligenceManager:
                     "analysis_timestamp": datetime.now().isoformat()
                 }
                 
-                logger.info(f"✅ Completed exploitability analysis for {cve_id}: {exploitability_level} ({exploitability_score:.2f})")
+                logger.info(f"✅ Completed exploitability analysis for {_sanitize_log(cve_id)}: {_sanitize_log(exploitability_level)} ({_sanitize_log(format(exploitability_score, '.2f'))})")
                 
                 return analysis
                 
             except requests.exceptions.RequestException as e:
-                logger.error(f"❌ Network error analyzing {cve_id}: {str(e)}")
+                logger.error(f"❌ Network error analyzing {_sanitize_log(cve_id)}: {_sanitize_log(str(e))}")
                 return {
                     "success": False,
                     "error": f"Network error: {str(e)}",
@@ -6387,7 +6378,7 @@ class CVEIntelligenceManager:
                 }
                 
         except Exception as e:
-            logger.error(f"💥 Error analyzing CVE {cve_id}: {str(e)}")
+            logger.error(f"💥 Error analyzing CVE {_sanitize_log(cve_id)}: {_sanitize_log(str(e))}")
             return {
                 "success": False,
                 "error": str(e),
@@ -6397,14 +6388,14 @@ class CVEIntelligenceManager:
     def search_existing_exploits(self, cve_id):
         """Search for existing exploits from real sources"""
         try:
-            logger.info(f"🔎 Searching existing exploits for {cve_id}")
+            logger.info(f"🔎 Searching existing exploits for {_sanitize_log(cve_id)}")
             
             all_exploits = []
             sources_searched = []
             
             # 1. Search GitHub for PoCs and exploits
             try:
-                logger.info(f"🔍 Searching GitHub for {cve_id} exploits...")
+                logger.info(f"🔍 Searching GitHub for {_sanitize_log(cve_id)} exploits...")
                 
                 # GitHub Search API
                 github_search_url = "https://api.github.com/search/repositories"
@@ -6456,17 +6447,17 @@ class CVEIntelligenceManager:
                             all_exploits.append(exploit_entry)
                     
                     sources_searched.append("github")
-                    logger.info(f"✅ Found {len([e for e in all_exploits if e['source'] == 'github'])} GitHub repositories")
+                    logger.info(f"✅ Found {_sanitize_log(len([e for e in all_exploits if e['source'] == 'github']))} GitHub repositories")
                 
                 else:
-                    logger.warning(f"⚠️ GitHub search failed with status {github_response.status_code}")
+                    logger.warning(f"⚠️ GitHub search failed with status {_sanitize_log(github_response.status_code)}")
                     
             except requests.exceptions.RequestException as e:
-                logger.error(f"❌ GitHub search error: {str(e)}")
+                logger.error(f"❌ GitHub search error: {_sanitize_log(str(e))}")
             
             # 2. Search Exploit-DB via searchsploit-like functionality
             try:
-                logger.info(f"🔍 Searching for {cve_id} in exploit databases...")
+                logger.info(f"🔍 Searching for {_sanitize_log(cve_id)} in exploit databases...")
                 
                 # Since we can't directly access Exploit-DB API, we'll use a web search approach
                 # or check if the CVE references contain exploit-db links
@@ -6521,11 +6512,11 @@ class CVEIntelligenceManager:
                                         sources_searched.append(source_name)
                 
             except Exception as e:
-                logger.error(f"❌ Exploit database search error: {str(e)}")
+                logger.error(f"❌ Exploit database search error: {_sanitize_log(str(e))}")
             
             # 3. Search for Metasploit modules
             try:
-                logger.info(f"🔍 Searching for Metasploit modules for {cve_id}...")
+                logger.info(f"🔍 Searching for Metasploit modules for {_sanitize_log(cve_id)}...")
                 
                 # Search GitHub for Metasploit modules containing the CVE
                 msf_search_url = "https://api.github.com/search/code"
@@ -6565,10 +6556,10 @@ class CVEIntelligenceManager:
                 elif msf_response.status_code == 403:
                     logger.warning("⚠️ GitHub API rate limit reached for code search")
                 else:
-                    logger.warning(f"⚠️ Metasploit search failed with status {msf_response.status_code}")
+                    logger.warning(f"⚠️ Metasploit search failed with status {_sanitize_log(msf_response.status_code)}")
                     
             except requests.exceptions.RequestException as e:
-                logger.error(f"❌ Metasploit search error: {str(e)}")
+                logger.error(f"❌ Metasploit search error: {_sanitize_log(str(e))}")
             
             # Add default sources to searched list
             default_sources = ["exploit-db", "github", "metasploit", "packetstorm"]
@@ -6584,7 +6575,7 @@ class CVEIntelligenceManager:
                 x.get("date_published", "")
             ), reverse=True)
             
-            logger.info(f"✅ Found {len(all_exploits)} total exploits from {len(sources_searched)} sources")
+            logger.info(f"✅ Found {_sanitize_log(len(all_exploits))} total exploits from {_sanitize_log(len(sources_searched))} sources")
             
             return {
                 "success": True,
@@ -6602,7 +6593,7 @@ class CVEIntelligenceManager:
             }
             
         except Exception as e:
-            logger.error(f"💥 Error searching exploits for {cve_id}: {str(e)}")
+            logger.error(f"💥 Error searching exploits for {_sanitize_log(cve_id)}: {_sanitize_log(str(e))}")
             return {
                 "success": False,
                 "error": str(e),
@@ -6693,14 +6684,14 @@ class HexStrikeCache:
                 # Move to end (most recently used)
                 self.cache.move_to_end(key)
                 self.stats["hits"] += 1
-                logger.info(f"💾 Cache HIT for command: {command}")
+                logger.info(f"💾 Cache HIT for command: {_sanitize_log(command)}")
                 return data
             else:
                 # Remove expired entry
                 del self.cache[key]
 
         self.stats["misses"] += 1
-        logger.info(f"🔍 Cache MISS for command: {command}")
+        logger.info(f"🔍 Cache MISS for command: {_sanitize_log(command)}")
         return None
 
     def set(self, command: str, params: Dict[str, Any], result: Dict[str, Any]):
@@ -6714,7 +6705,7 @@ class HexStrikeCache:
             self.stats["evictions"] += 1
 
         self.cache[key] = (time.time(), result)
-        logger.info(f"💾 Cached result for command: {command}")
+        logger.info(f"💾 Cached result for command: {_sanitize_log(command)}")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
@@ -6803,9 +6794,9 @@ class EnhancedCommandExecutor:
                 if line:
                     self.stdout_data += line
                     # Real-time output display
-                    logger.info(f"📤 STDOUT: {line.strip()}")
+                    logger.info(f"📤 STDOUT: {_sanitize_log(line.strip())}")
         except Exception as e:
-            logger.error(f"Error reading stdout: {e}")
+            logger.error(f"Error reading stdout: {_sanitize_log(e)}")
 
     def _read_stderr(self):
         """Thread function to continuously read and display stderr"""
@@ -6814,9 +6805,9 @@ class EnhancedCommandExecutor:
                 if line:
                     self.stderr_data += line
                     # Real-time error output display
-                    logger.warning(f"📥 STDERR: {line.strip()}")
+                    logger.warning(f"📥 STDERR: {_sanitize_log(line.strip())}")
         except Exception as e:
-            logger.error(f"Error reading stderr: {e}")
+            logger.error(f"Error reading stderr: {_sanitize_log(e)}")
 
     def _show_progress(self, duration: float):
         """Show enhanced progress indication for long-running commands"""
@@ -6859,7 +6850,7 @@ class EnhancedCommandExecutor:
                     speed=speed
                 )
 
-                logger.info(f"{progress_bar} | {elapsed:.1f}s | PID: {self.process.pid}")
+                logger.info(f"{_sanitize_log(progress_bar)} | {_sanitize_log(format(elapsed, '.1f'))}s | PID: {_sanitize_log(self.process.pid)}")
                 time.sleep(0.8)
                 i += 1
                 if elapsed > self.timeout:
@@ -6869,8 +6860,8 @@ class EnhancedCommandExecutor:
         """Execute the command with enhanced monitoring and output"""
         self.start_time = time.time()
 
-        logger.info(f"🚀 EXECUTING: {self.command}")
-        logger.info(f"⏱️  TIMEOUT: {self.timeout}s | PID: Starting...")
+        logger.info(f"🚀 EXECUTING: {_sanitize_log(self.command)}")
+        logger.info(f"⏱️  TIMEOUT: {_sanitize_log(self.timeout)}s | PID: Starting...")
 
         try:
             self.process = subprocess.Popen(
@@ -6883,7 +6874,7 @@ class EnhancedCommandExecutor:
             )
 
             pid = self.process.pid
-            logger.info(f"🆔 PROCESS: PID {pid} started")
+            logger.info(f"🆔 PROCESS: PID {_sanitize_log(pid)} started")
 
             # Register process with ProcessManager (v5.0 enhancement)
             ProcessManager.register_process(pid, self.command, self.process)
@@ -6916,10 +6907,10 @@ class EnhancedCommandExecutor:
                 ProcessManager.cleanup_process(pid)
 
                 if self.return_code == 0:
-                    logger.info(f"✅ SUCCESS: Command completed | Exit Code: {self.return_code} | Duration: {execution_time:.2f}s")
+                    logger.info(f"✅ SUCCESS: Command completed | Exit Code: {_sanitize_log(self.return_code)} | Duration: {_sanitize_log(format(execution_time, '.2f'))}s")
                     telemetry.record_execution(True, execution_time)
                 else:
-                    logger.warning(f"⚠️  WARNING: Command completed with errors | Exit Code: {self.return_code} | Duration: {execution_time:.2f}s")
+                    logger.warning(f"⚠️  WARNING: Command completed with errors | Exit Code: {_sanitize_log(self.return_code)} | Duration: {_sanitize_log(format(execution_time, '.2f'))}s")
                     telemetry.record_execution(False, execution_time)
 
             except subprocess.TimeoutExpired:
@@ -6928,7 +6919,7 @@ class EnhancedCommandExecutor:
 
                 # Process timed out but we might have partial results
                 self.timed_out = True
-                logger.warning(f"⏰ TIMEOUT: Command timed out after {self.timeout}s | Terminating PID {self.process.pid}")
+                logger.warning(f"⏰ TIMEOUT: Command timed out after {_sanitize_log(self.timeout)}s | Terminating PID {_sanitize_log(self.process.pid)}")
 
                 # Try to terminate gracefully first
                 self.process.terminate()
@@ -6936,7 +6927,7 @@ class EnhancedCommandExecutor:
                     self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     # Force kill if it doesn't terminate
-                    logger.error(f"🔪 FORCE KILL: Process {self.process.pid} not responding to termination")
+                    logger.error(f"🔪 FORCE KILL: Process {_sanitize_log(self.process.pid)} not responding to termination")
                     self.process.kill()
 
                 self.return_code = -1
@@ -6987,8 +6978,8 @@ class EnhancedCommandExecutor:
             self.end_time = time.time()
             execution_time = self.end_time - self.start_time if self.start_time else 0
 
-            logger.error(f"💥 ERROR: Command execution failed: {str(e)}")
-            logger.error(f"🔍 TRACEBACK: {traceback.format_exc()}")
+            logger.error(f"💥 ERROR: Command execution failed: {_sanitize_log(str(e))}")
+            logger.error(f"🔍 TRACEBACK: {_sanitize_log(traceback.format_exc())}")
             telemetry.record_execution(False, execution_time)
 
             return {
@@ -7164,7 +7155,7 @@ def send_exploit(target_url, command):
             cve_id = cve_data.get("cve_id", "")
             description = cve_data.get("description", "").lower()
             
-            logger.info(f"🛠️ Generating specific exploit for {cve_id}")
+            logger.info(f"🛠️ Generating specific exploit for {_sanitize_log(cve_id)}")
 
             # Enhanced vulnerability classification using real CVE data
             vuln_type, specific_details = self._analyze_vulnerability_details(description, cve_data)
@@ -7209,7 +7200,7 @@ def send_exploit(target_url, command):
             }
 
         except Exception as e:
-            logger.error(f"💥 Error generating exploit for {cve_data.get('cve_id', 'unknown')}: {str(e)}")
+            logger.error(f"💥 Error generating exploit for {_sanitize_log(cve_data.get('cve_id', 'unknown'))}: {_sanitize_log(str(e))}")
             return {"success": False, "error": str(e)}
 
     def _classify_vulnerability(self, description):
@@ -8447,8 +8438,8 @@ class BufferOverflowExploit:
             try:
                 response = sock.recv(1024)
                 print(f"[+] Response: {{response}}")
-            except:
-                pass
+            except Exception:
+                logger.debug("Suppressed non-fatal error", exc_info=True)
                 
             sock.close()
             print("[+] Exploit sent successfully")
@@ -8589,7 +8580,7 @@ class VulnerabilityCorrelator:
             }
 
         except Exception as e:
-            logger.error(f"Error finding attack chains: {str(e)}")
+            logger.error(f"Error finding attack chains: {_sanitize_log(str(e))}")
             return {"success": False, "error": str(e)}
 
     def _find_vulnerabilities_by_pattern(self, software, pattern_type):
@@ -8728,7 +8719,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
                 actual_delay = min(delay * (recovery_strategy.backoff_multiplier ** (attempt_count - 1)), backoff)
 
                 retry_info = f'Retrying in {actual_delay}s (attempt {attempt_count}/{max_attempts})'
-                logger.info(f"{ModernVisualEngine.format_tool_status(tool_name, 'RECOVERY', retry_info)}")
+                logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status(tool_name, 'RECOVERY', retry_info))}")
                 time.sleep(actual_delay)
                 continue
 
@@ -8742,7 +8733,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
 
                 # Rebuild command with adjusted parameters
                 command = _rebuild_command_with_params(tool_name, command, adjusted_params)
-                logger.info(f"🔧 Retrying {tool_name} with reduced scope")
+                logger.info(f"🔧 Retrying {_sanitize_log(tool_name)} with reduced scope")
                 continue
 
             elif recovery_strategy.action == RecoveryAction.SWITCH_TO_ALTERNATIVE_TOOL:
@@ -8751,7 +8742,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
 
                 if alternative_tool:
                     switch_info = f'Switching to alternative: {alternative_tool}'
-                    logger.info(f"{ModernVisualEngine.format_tool_status(tool_name, 'RECOVERY', switch_info)}")
+                    logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status(tool_name, 'RECOVERY', switch_info))}")
                     # This would require the calling function to handle tool switching
                     result["alternative_tool_suggested"] = alternative_tool
                     result["recovery_info"] = {
@@ -8762,7 +8753,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
                     }
                     return result
                 else:
-                    logger.warning(f"⚠️  No alternative tool found for {tool_name}")
+                    logger.warning(f"⚠️  No alternative tool found for {_sanitize_log(tool_name)}")
 
             elif recovery_strategy.action == RecoveryAction.ADJUST_PARAMETERS:
                 # Adjust parameters based on error type
@@ -8771,7 +8762,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
 
                 # Rebuild command with adjusted parameters
                 command = _rebuild_command_with_params(tool_name, command, adjusted_params)
-                logger.info(f"🔧 Retrying {tool_name} with adjusted parameters")
+                logger.info(f"🔧 Retrying {_sanitize_log(tool_name)} with adjusted parameters")
                 continue
 
             elif recovery_strategy.action == RecoveryAction.ESCALATE_TO_HUMAN:
@@ -8820,7 +8811,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
                 return degraded_result
 
             elif recovery_strategy.action == RecoveryAction.ABORT_OPERATION:
-                logger.error(f"🛑 Aborting {tool_name} operation after {attempt_count} attempts")
+                logger.error(f"🛑 Aborting {_sanitize_log(tool_name)} operation after {_sanitize_log(attempt_count)} attempts")
                 result["recovery_info"] = {
                     "attempts_made": attempt_count,
                     "recovery_applied": True,
@@ -8833,7 +8824,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
 
         except Exception as e:
             last_error = e
-            logger.error(f"💥 Unexpected error in recovery attempt {attempt_count}: {str(e)}")
+            logger.error(f"💥 Unexpected error in recovery attempt {_sanitize_log(attempt_count)}: {_sanitize_log(str(e))}")
 
             # If this is the last attempt, escalate to human
             if attempt_count >= max_attempts:
@@ -8864,7 +8855,7 @@ def execute_command_with_recovery(tool_name: str, command: str, parameters: Dict
                 }
 
     # All attempts exhausted
-    logger.error(f"🚫 All recovery attempts exhausted for {tool_name}")
+    logger.error(f"🚫 All recovery attempts exhausted for {_sanitize_log(tool_name)}")
     return {
         "success": False,
         "error": f"All recovery attempts exhausted: {str(last_error)}",
@@ -8949,11 +8940,11 @@ class FileOperationsManager:
                 else:
                     f.write(content)
 
-            logger.info(f"📄 Created file: {filename} ({len(content)} bytes)")
+            logger.info(f"📄 Created file: {_sanitize_log(filename)} ({_sanitize_log(len(content))} bytes)")
             return {"success": True, "path": str(file_path), "size": len(content)}
 
         except Exception as e:
-            logger.error(f"❌ Error creating file {filename}: {e}")
+            logger.error(f"❌ Error creating file {_sanitize_log(filename)}: {_sanitize_log(e)}")
             return {"success": False, "error": str(e)}
 
     def modify_file(self, filename: str, content: str, append: bool = False) -> Dict[str, Any]:
@@ -8967,11 +8958,11 @@ class FileOperationsManager:
             with open(file_path, mode) as f:
                 f.write(content)
 
-            logger.info(f"✏️  Modified file: {filename}")
+            logger.info(f"✏️  Modified file: {_sanitize_log(filename)}")
             return {"success": True, "path": str(file_path)}
 
         except Exception as e:
-            logger.error(f"❌ Error modifying file {filename}: {e}")
+            logger.error(f"❌ Error modifying file {_sanitize_log(filename)}: {_sanitize_log(e)}")
             return {"success": False, "error": str(e)}
 
     def delete_file(self, filename: str) -> Dict[str, Any]:
@@ -8986,11 +8977,11 @@ class FileOperationsManager:
             else:
                 file_path.unlink()
 
-            logger.info(f"🗑️  Deleted: {filename}")
+            logger.info(f"🗑️  Deleted: {_sanitize_log(filename)}")
             return {"success": True}
 
         except Exception as e:
-            logger.error(f"❌ Error deleting {filename}: {e}")
+            logger.error(f"❌ Error deleting {_sanitize_log(filename)}: {_sanitize_log(e)}")
             return {"success": False, "error": str(e)}
 
     def list_files(self, directory: str = ".") -> Dict[str, Any]:
@@ -9012,7 +9003,7 @@ class FileOperationsManager:
             return {"success": True, "files": files}
 
         except Exception as e:
-            logger.error(f"❌ Error listing files in {directory}: {e}")
+            logger.error(f"❌ Error listing files in {_sanitize_log(directory)}: {_sanitize_log(e)}")
             return {"success": False, "error": str(e)}
 
 # Global file operations manager
@@ -9099,7 +9090,7 @@ def health_check():
         try:
             result = execute_command(f"which {tool}", use_cache=True)
             tools_status[tool] = result["success"]
-        except:
+        except Exception:
             tools_status[tool] = False
 
     all_essential_tools_available = all(tools_status[tool] for tool in essential_tools)
@@ -9151,7 +9142,7 @@ def generic_command():
         result = execute_command(command, use_cache=use_cache)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in command endpoint: {str(e)}")
+        logger.error(f"💥 Error in command endpoint: {_sanitize_log(str(e))}")
         logger.error(traceback.format_exc())
         return jsonify({
             "error": f"Server error: {str(e)}"
@@ -9174,7 +9165,7 @@ def create_file():
         result = file_manager.create_file(filename, content, binary)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error creating file: {str(e)}")
+        logger.error(f"💥 Error creating file: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/files/modify", methods=["POST"])
@@ -9192,7 +9183,7 @@ def modify_file():
         result = file_manager.modify_file(filename, content, append)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error modifying file: {str(e)}")
+        logger.error(f"💥 Error modifying file: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/files/delete", methods=["DELETE"])
@@ -9208,7 +9199,7 @@ def delete_file():
         result = file_manager.delete_file(filename)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error deleting file: {str(e)}")
+        logger.error(f"💥 Error deleting file: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/files/list", methods=["GET"])
@@ -9219,7 +9210,7 @@ def list_files():
         result = file_manager.list_files(directory)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error listing files: {str(e)}")
+        logger.error(f"💥 Error listing files: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Payload Generation Endpoint
@@ -9258,10 +9249,10 @@ def generate_payload():
             "pattern": pattern
         }
 
-        logger.info(f"🎯 Generated {payload_type} payload: {filename} ({size} bytes)")
+        logger.info(f"🎯 Generated {_sanitize_log(payload_type)} payload: {_sanitize_log(filename)} ({_sanitize_log(size)} bytes)")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error generating payload: {str(e)}")
+        logger.error(f"💥 Error generating payload: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Cache Management Endpoint
@@ -9311,7 +9302,7 @@ def list_processes():
             "total_count": len(processes)
         })
     except Exception as e:
-        logger.error(f"💥 Error listing processes: {str(e)}")
+        logger.error(f"💥 Error listing processes: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/processes/status/<int:pid>", methods=["GET"])
@@ -9342,7 +9333,7 @@ def get_process_status(pid):
             }), 404
 
     except Exception as e:
-        logger.error(f"💥 Error getting process status: {str(e)}")
+        logger.error(f"💥 Error getting process status: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/processes/terminate/<int:pid>", methods=["POST"])
@@ -9352,7 +9343,7 @@ def terminate_process(pid):
         success = ProcessManager.terminate_process(pid)
 
         if success:
-            logger.info(f"🛑 Process {pid} terminated successfully")
+            logger.info(f"🛑 Process {_sanitize_log(pid)} terminated successfully")
             return jsonify({
                 "success": True,
                 "message": f"Process {pid} terminated successfully"
@@ -9364,7 +9355,7 @@ def terminate_process(pid):
             }), 404
 
     except Exception as e:
-        logger.error(f"💥 Error terminating process {pid}: {str(e)}")
+        logger.error(f"💥 Error terminating process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/processes/pause/<int:pid>", methods=["POST"])
@@ -9374,7 +9365,7 @@ def pause_process(pid):
         success = ProcessManager.pause_process(pid)
 
         if success:
-            logger.info(f"⏸️ Process {pid} paused successfully")
+            logger.info(f"⏸️ Process {_sanitize_log(pid)} paused successfully")
             return jsonify({
                 "success": True,
                 "message": f"Process {pid} paused successfully"
@@ -9386,7 +9377,7 @@ def pause_process(pid):
             }), 404
 
     except Exception as e:
-        logger.error(f"💥 Error pausing process {pid}: {str(e)}")
+        logger.error(f"💥 Error pausing process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/processes/resume/<int:pid>", methods=["POST"])
@@ -9396,7 +9387,7 @@ def resume_process(pid):
         success = ProcessManager.resume_process(pid)
 
         if success:
-            logger.info(f"▶️ Process {pid} resumed successfully")
+            logger.info(f"▶️ Process {_sanitize_log(pid)} resumed successfully")
             return jsonify({
                 "success": True,
                 "message": f"Process {pid} resumed successfully"
@@ -9408,7 +9399,7 @@ def resume_process(pid):
             }), 404
 
     except Exception as e:
-        logger.error(f"💥 Error resuming process {pid}: {str(e)}")
+        logger.error(f"💥 Error resuming process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/processes/dashboard", methods=["GET"])
@@ -9461,7 +9452,7 @@ def process_dashboard():
         return jsonify(dashboard)
 
     except Exception as e:
-        logger.error(f"💥 Error getting process dashboard: {str(e)}")
+        logger.error(f"💥 Error getting process dashboard: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/visual/vulnerability-card", methods=["POST"])
@@ -9482,7 +9473,7 @@ def create_vulnerability_card():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating vulnerability card: {str(e)}")
+        logger.error(f"💥 Error creating vulnerability card: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/visual/summary-report", methods=["POST"])
@@ -9504,7 +9495,7 @@ def create_summary_report():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating summary report: {str(e)}")
+        logger.error(f"💥 Error creating summary report: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/visual/tool-output", methods=["POST"])
@@ -9529,7 +9520,7 @@ def format_tool_output():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error formatting tool output: {str(e)}")
+        logger.error(f"💥 Error formatting tool output: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -9545,13 +9536,13 @@ def analyze_target():
             return jsonify({"error": "Target is required"}), 400
 
         target = data['target']
-        logger.info(f"🧠 Analyzing target: {target}")
+        logger.info(f"🧠 Analyzing target: {_sanitize_log(target)}")
 
         # Use the decision engine to analyze the target
         profile = decision_engine.analyze_target(target)
 
-        logger.info(f"✅ Target analysis completed for {target}")
-        logger.info(f"📊 Target type: {profile.target_type.value}, Risk level: {profile.risk_level}")
+        logger.info(f"✅ Target analysis completed for {_sanitize_log(target)}")
+        logger.info(f"📊 Target type: {_sanitize_log(profile.target_type.value)}, Risk level: {_sanitize_log(profile.risk_level)}")
 
         return jsonify({
             "success": True,
@@ -9560,7 +9551,7 @@ def analyze_target():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error analyzing target: {str(e)}")
+        logger.error(f"💥 Error analyzing target: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/intelligence/select-tools", methods=["POST"])
@@ -9574,7 +9565,7 @@ def select_optimal_tools():
         target = data['target']
         objective = data.get('objective', 'comprehensive')  # comprehensive, quick, stealth
 
-        logger.info(f"🎯 Selecting optimal tools for {target} with objective: {objective}")
+        logger.info(f"🎯 Selecting optimal tools for {_sanitize_log(target)} with objective: {_sanitize_log(objective)}")
 
         # Analyze target first
         profile = decision_engine.analyze_target(target)
@@ -9582,7 +9573,7 @@ def select_optimal_tools():
         # Select optimal tools
         selected_tools = decision_engine.select_optimal_tools(profile, objective)
 
-        logger.info(f"✅ Selected {len(selected_tools)} tools for {target}")
+        logger.info(f"✅ Selected {_sanitize_log(len(selected_tools))} tools for {_sanitize_log(target)}")
 
         return jsonify({
             "success": True,
@@ -9595,7 +9586,7 @@ def select_optimal_tools():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error selecting tools: {str(e)}")
+        logger.error(f"💥 Error selecting tools: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/intelligence/optimize-parameters", methods=["POST"])
@@ -9610,7 +9601,7 @@ def optimize_tool_parameters():
         tool = data['tool']
         context = data.get('context', {})
 
-        logger.info(f"⚙️  Optimizing parameters for {tool} against {target}")
+        logger.info(f"⚙️  Optimizing parameters for {_sanitize_log(tool)} against {_sanitize_log(target)}")
 
         # Analyze target first
         profile = decision_engine.analyze_target(target)
@@ -9618,7 +9609,7 @@ def optimize_tool_parameters():
         # Optimize parameters
         optimized_params = decision_engine.optimize_parameters(tool, profile, context)
 
-        logger.info(f"✅ Parameters optimized for {tool}")
+        logger.info(f"✅ Parameters optimized for {_sanitize_log(tool)}")
 
         return jsonify({
             "success": True,
@@ -9631,7 +9622,7 @@ def optimize_tool_parameters():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error optimizing parameters: {str(e)}")
+        logger.error(f"💥 Error optimizing parameters: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/intelligence/create-attack-chain", methods=["POST"])
@@ -9645,7 +9636,7 @@ def create_attack_chain():
         target = data['target']
         objective = data.get('objective', 'comprehensive')
 
-        logger.info(f"⚔️  Creating attack chain for {target} with objective: {objective}")
+        logger.info(f"⚔️  Creating attack chain for {_sanitize_log(target)} with objective: {_sanitize_log(objective)}")
 
         # Analyze target first
         profile = decision_engine.analyze_target(target)
@@ -9653,8 +9644,8 @@ def create_attack_chain():
         # Create attack chain
         attack_chain = decision_engine.create_attack_chain(profile, objective)
 
-        logger.info(f"✅ Attack chain created with {len(attack_chain.steps)} steps")
-        logger.info(f"📊 Success probability: {attack_chain.success_probability:.2f}, Estimated time: {attack_chain.estimated_time}s")
+        logger.info(f"✅ Attack chain created with {_sanitize_log(len(attack_chain.steps))} steps")
+        logger.info(f"📊 Success probability: {_sanitize_log(format(attack_chain.success_probability, '.2f'))}, Estimated time: {_sanitize_log(attack_chain.estimated_time)}s")
 
         return jsonify({
             "success": True,
@@ -9666,7 +9657,7 @@ def create_attack_chain():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating attack chain: {str(e)}")
+        logger.error(f"💥 Error creating attack chain: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/intelligence/smart-scan", methods=["POST"])
@@ -9681,7 +9672,7 @@ def intelligent_smart_scan():
         objective = data.get('objective', 'comprehensive')
         max_tools = data.get('max_tools', 5)
 
-        logger.info(f"🚀 Starting intelligent smart scan for {target}")
+        logger.info(f"🚀 Starting intelligent smart scan for {_sanitize_log(target)}")
 
         # Analyze target
         profile = decision_engine.analyze_target(target)
@@ -9702,7 +9693,7 @@ def intelligent_smart_scan():
         def execute_single_tool(tool_name, target, profile):
             """Execute a single tool and return results"""
             try:
-                logger.info(f"🔧 Executing {tool_name} with optimized parameters")
+                logger.info(f"🔧 Executing {_sanitize_log(tool_name)} with optimized parameters")
 
                 # Get optimized parameters for this tool
                 optimized_params = decision_engine.optimize_parameters(tool_name, profile)
@@ -9752,7 +9743,7 @@ def intelligent_smart_scan():
                         "success": result.get('success', False)
                     }
                 else:
-                    logger.warning(f"⚠️ No execution mapping found for tool: {tool_name}")
+                    logger.warning(f"⚠️ No execution mapping found for tool: {_sanitize_log(tool_name)}")
                     return {
                         "tool": tool_name,
                         "parameters": optimized_params,
@@ -9763,7 +9754,7 @@ def intelligent_smart_scan():
                     }
 
             except Exception as e:
-                logger.error(f"❌ Error executing {tool_name}: {str(e)}")
+                logger.error(f"❌ Error executing {_sanitize_log(tool_name)}: {_sanitize_log(str(e))}")
                 return {
                     "tool": tool_name,
                     "status": "failed",
@@ -9808,8 +9799,8 @@ def intelligent_smart_scan():
             "tools_used": [t["tool"] for t in successful_tools]
         }
 
-        logger.info(f"✅ Intelligent smart scan completed for {target}")
-        logger.info(f"📊 Results: {len(successful_tools)}/{len(selected_tools)} tools successful, {scan_results['total_vulnerabilities']} vulnerabilities found")
+        logger.info(f"✅ Intelligent smart scan completed for {_sanitize_log(target)}")
+        logger.info(f"📊 Results: {_sanitize_log(len(successful_tools))}/{_sanitize_log(len(selected_tools))} tools successful, {_sanitize_log(scan_results['total_vulnerabilities'])} vulnerabilities found")
 
         return jsonify({
             "success": True,
@@ -9818,7 +9809,7 @@ def intelligent_smart_scan():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in intelligent smart scan: {str(e)}")
+        logger.error(f"💥 Error in intelligent smart scan: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}", "success": False}), 500
 
 # Helper functions for intelligent smart scan tool execution
@@ -10048,7 +10039,7 @@ def detect_technologies():
 
         target = data['target']
 
-        logger.info(f"🔍 Detecting technologies for {target}")
+        logger.info(f"🔍 Detecting technologies for {_sanitize_log(target)}")
 
         # Analyze target
         profile = decision_engine.analyze_target(target)
@@ -10075,7 +10066,7 @@ def detect_technologies():
                     "priority": "medium"
                 }
 
-        logger.info(f"✅ Technology detection completed for {target}")
+        logger.info(f"✅ Technology detection completed for {_sanitize_log(target)}")
 
         return jsonify({
             "success": True,
@@ -10088,7 +10079,7 @@ def detect_technologies():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in technology detection: {str(e)}")
+        logger.error(f"💥 Error in technology detection: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -10108,7 +10099,7 @@ def create_reconnaissance_workflow():
         out_of_scope = data.get('out_of_scope', [])
         program_type = data.get('program_type', 'web')
 
-        logger.info(f"🎯 Creating reconnaissance workflow for {domain}")
+        logger.info(f"🎯 Creating reconnaissance workflow for {_sanitize_log(domain)}")
 
         # Create bug bounty target
         target = BugBountyTarget(
@@ -10121,7 +10112,7 @@ def create_reconnaissance_workflow():
         # Generate reconnaissance workflow
         workflow = bugbounty_manager.create_reconnaissance_workflow(target)
 
-        logger.info(f"✅ Reconnaissance workflow created for {domain}")
+        logger.info(f"✅ Reconnaissance workflow created for {_sanitize_log(domain)}")
 
         return jsonify({
             "success": True,
@@ -10130,7 +10121,7 @@ def create_reconnaissance_workflow():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating reconnaissance workflow: {str(e)}")
+        logger.error(f"💥 Error creating reconnaissance workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/bugbounty/vulnerability-hunting-workflow", methods=["POST"])
@@ -10145,7 +10136,7 @@ def create_vulnerability_hunting_workflow():
         priority_vulns = data.get('priority_vulns', ["rce", "sqli", "xss", "idor", "ssrf"])
         bounty_range = data.get('bounty_range', 'unknown')
 
-        logger.info(f"🎯 Creating vulnerability hunting workflow for {domain}")
+        logger.info(f"🎯 Creating vulnerability hunting workflow for {_sanitize_log(domain)}")
 
         # Create bug bounty target
         target = BugBountyTarget(
@@ -10157,7 +10148,7 @@ def create_vulnerability_hunting_workflow():
         # Generate vulnerability hunting workflow
         workflow = bugbounty_manager.create_vulnerability_hunting_workflow(target)
 
-        logger.info(f"✅ Vulnerability hunting workflow created for {domain}")
+        logger.info(f"✅ Vulnerability hunting workflow created for {_sanitize_log(domain)}")
 
         return jsonify({
             "success": True,
@@ -10166,7 +10157,7 @@ def create_vulnerability_hunting_workflow():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating vulnerability hunting workflow: {str(e)}")
+        logger.error(f"💥 Error creating vulnerability hunting workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/bugbounty/business-logic-workflow", methods=["POST"])
@@ -10180,7 +10171,7 @@ def create_business_logic_workflow():
         domain = data['domain']
         program_type = data.get('program_type', 'web')
 
-        logger.info(f"🎯 Creating business logic testing workflow for {domain}")
+        logger.info(f"🎯 Creating business logic testing workflow for {_sanitize_log(domain)}")
 
         # Create bug bounty target
         target = BugBountyTarget(domain=domain, program_type=program_type)
@@ -10188,7 +10179,7 @@ def create_business_logic_workflow():
         # Generate business logic testing workflow
         workflow = bugbounty_manager.create_business_logic_testing_workflow(target)
 
-        logger.info(f"✅ Business logic testing workflow created for {domain}")
+        logger.info(f"✅ Business logic testing workflow created for {_sanitize_log(domain)}")
 
         return jsonify({
             "success": True,
@@ -10197,7 +10188,7 @@ def create_business_logic_workflow():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating business logic workflow: {str(e)}")
+        logger.error(f"💥 Error creating business logic workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/bugbounty/osint-workflow", methods=["POST"])
@@ -10210,7 +10201,7 @@ def create_osint_workflow():
 
         domain = data['domain']
 
-        logger.info(f"🎯 Creating OSINT workflow for {domain}")
+        logger.info(f"🎯 Creating OSINT workflow for {_sanitize_log(domain)}")
 
         # Create bug bounty target
         target = BugBountyTarget(domain=domain)
@@ -10218,7 +10209,7 @@ def create_osint_workflow():
         # Generate OSINT workflow
         workflow = bugbounty_manager.create_osint_workflow(target)
 
-        logger.info(f"✅ OSINT workflow created for {domain}")
+        logger.info(f"✅ OSINT workflow created for {_sanitize_log(domain)}")
 
         return jsonify({
             "success": True,
@@ -10227,7 +10218,7 @@ def create_osint_workflow():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating OSINT workflow: {str(e)}")
+        logger.error(f"💥 Error creating OSINT workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/bugbounty/file-upload-testing", methods=["POST"])
@@ -10240,7 +10231,7 @@ def create_file_upload_testing():
 
         target_url = data['target_url']
 
-        logger.info(f"🎯 Creating file upload testing workflow for {target_url}")
+        logger.info(f"🎯 Creating file upload testing workflow for {_sanitize_log(target_url)}")
 
         # Generate file upload testing workflow
         workflow = fileupload_framework.create_upload_testing_workflow(target_url)
@@ -10249,7 +10240,7 @@ def create_file_upload_testing():
         test_files = fileupload_framework.generate_test_files()
         workflow["test_files"] = test_files
 
-        logger.info(f"✅ File upload testing workflow created for {target_url}")
+        logger.info(f"✅ File upload testing workflow created for {_sanitize_log(target_url)}")
 
         return jsonify({
             "success": True,
@@ -10258,7 +10249,7 @@ def create_file_upload_testing():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating file upload testing workflow: {str(e)}")
+        logger.error(f"💥 Error creating file upload testing workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/bugbounty/comprehensive-assessment", methods=["POST"])
@@ -10275,7 +10266,7 @@ def create_comprehensive_bugbounty_assessment():
         include_osint = data.get('include_osint', True)
         include_business_logic = data.get('include_business_logic', True)
 
-        logger.info(f"🎯 Creating comprehensive bug bounty assessment for {domain}")
+        logger.info(f"🎯 Creating comprehensive bug bounty assessment for {_sanitize_log(domain)}")
 
         # Create bug bounty target
         target = BugBountyTarget(
@@ -10308,7 +10299,7 @@ def create_comprehensive_bugbounty_assessment():
             "priority_score": assessment["vulnerability_hunting"].get("priority_score", 0)
         }
 
-        logger.info(f"✅ Comprehensive bug bounty assessment created for {domain}")
+        logger.info(f"✅ Comprehensive bug bounty assessment created for {_sanitize_log(domain)}")
 
         return jsonify({
             "success": True,
@@ -10317,7 +10308,7 @@ def create_comprehensive_bugbounty_assessment():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating comprehensive assessment: {str(e)}")
+        logger.error(f"💥 Error creating comprehensive assessment: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -10351,7 +10342,7 @@ def nmap():
 
         command += f" {target}"
 
-        logger.info(f"🔍 Starting Nmap scan: {target}")
+        logger.info(f"🔍 Starting Nmap scan: {_sanitize_log(target)}")
 
         # Use intelligent error handling if enabled
         if use_recovery:
@@ -10365,11 +10356,11 @@ def nmap():
         else:
             result = execute_command(command)
 
-        logger.info(f"📊 Nmap scan completed for {target}")
+        logger.info(f"📊 Nmap scan completed for {_sanitize_log(target)}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in nmap endpoint: {str(e)}")
+        logger.error(f"💥 Error in nmap endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -10393,7 +10384,7 @@ def gobuster():
 
         # Validate mode
         if mode not in ["dir", "dns", "fuzz", "vhost"]:
-            logger.warning(f"❌ Invalid gobuster mode: {mode}")
+            logger.warning(f"❌ Invalid gobuster mode: {_sanitize_log(mode)}")
             return jsonify({
                 "error": f"Invalid mode: {mode}. Must be one of: dir, dns, fuzz, vhost"
             }), 400
@@ -10403,7 +10394,7 @@ def gobuster():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"📁 Starting Gobuster {mode} scan: {url}")
+        logger.info(f"📁 Starting Gobuster {_sanitize_log(mode)} scan: {_sanitize_log(url)}")
 
         # Use intelligent error handling if enabled
         if use_recovery:
@@ -10417,11 +10408,11 @@ def gobuster():
         else:
             result = execute_command(command)
 
-        logger.info(f"📊 Gobuster scan completed for {url}")
+        logger.info(f"📊 Gobuster scan completed for {_sanitize_log(url)}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in gobuster endpoint: {str(e)}")
+        logger.error(f"💥 Error in gobuster endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -10458,7 +10449,7 @@ def nuclei():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔬 Starting Nuclei vulnerability scan: {target}")
+        logger.info(f"🔬 Starting Nuclei vulnerability scan: {_sanitize_log(target)}")
 
         # Use intelligent error handling if enabled
         if use_recovery:
@@ -10473,11 +10464,11 @@ def nuclei():
         else:
             result = execute_command(command)
 
-        logger.info(f"📊 Nuclei scan completed for {target}")
+        logger.info(f"📊 Nuclei scan completed for {_sanitize_log(target)}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in nuclei endpoint: {str(e)}")
+        logger.error(f"💥 Error in nuclei endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -10519,13 +10510,13 @@ def prowler():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"☁️  Starting Prowler {provider} security assessment")
+        logger.info(f"☁️  Starting Prowler {_sanitize_log(provider)} security assessment")
         result = execute_command(command)
         result["output_directory"] = output_dir
         logger.info(f"📊 Prowler assessment completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in prowler endpoint: {str(e)}")
+        logger.error(f"💥 Error in prowler endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -10562,14 +10553,14 @@ def trivy():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Trivy {scan_type} scan: {target}")
+        logger.info(f"🔍 Starting Trivy {_sanitize_log(scan_type)} scan: {_sanitize_log(target)}")
         result = execute_command(command)
         if output_file:
             result["output_file"] = output_file
-        logger.info(f"📊 Trivy scan completed for {target}")
+        logger.info(f"📊 Trivy scan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in trivy endpoint: {str(e)}")
+        logger.error(f"💥 Error in trivy endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -10609,13 +10600,13 @@ def scout_suite():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"☁️  Starting Scout Suite {provider} assessment")
+        logger.info(f"☁️  Starting Scout Suite {_sanitize_log(provider)} assessment")
         result = execute_command(command)
         result["report_directory"] = report_dir
         logger.info(f"📊 Scout Suite assessment completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in scout-suite endpoint: {str(e)}")
+        logger.error(f"💥 Error in scout-suite endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/cloudmapper", methods=["POST"])
@@ -10643,12 +10634,12 @@ def cloudmapper():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"☁️  Starting CloudMapper {action}")
+        logger.info(f"☁️  Starting CloudMapper {_sanitize_log(action)}")
         result = execute_command(command)
-        logger.info(f"📊 CloudMapper {action} completed")
+        logger.info(f"📊 CloudMapper {_sanitize_log(action)} completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in cloudmapper endpoint: {str(e)}")
+        logger.error(f"💥 Error in cloudmapper endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/pacu", methods=["POST"])
@@ -10694,13 +10685,13 @@ def pacu():
         # Cleanup
         try:
             os.remove(command_file)
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         logger.info(f"📊 Pacu exploitation completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in pacu endpoint: {str(e)}")
+        logger.error(f"💥 Error in pacu endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/kube-hunter", methods=["POST"])
@@ -10744,7 +10735,7 @@ def kube_hunter():
         logger.info(f"📊 kube-hunter scan completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in kube-hunter endpoint: {str(e)}")
+        logger.error(f"💥 Error in kube-hunter endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/kube-bench", methods=["POST"])
@@ -10780,7 +10771,7 @@ def kube_bench():
         logger.info(f"📊 kube-bench benchmark completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in kube-bench endpoint: {str(e)}")
+        logger.error(f"💥 Error in kube-bench endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/docker-bench-security", methods=["POST"])
@@ -10813,7 +10804,7 @@ def docker_bench_security():
         logger.info(f"📊 Docker Bench Security completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in docker-bench-security endpoint: {str(e)}")
+        logger.error(f"💥 Error in docker-bench-security endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/clair", methods=["POST"])
@@ -10842,12 +10833,12 @@ def clair():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🐳 Starting Clair vulnerability scan: {image}")
+        logger.info(f"🐳 Starting Clair vulnerability scan: {_sanitize_log(image)}")
         result = execute_command(command)
-        logger.info(f"📊 Clair scan completed for {image}")
+        logger.info(f"📊 Clair scan completed for {_sanitize_log(image)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in clair endpoint: {str(e)}")
+        logger.error(f"💥 Error in clair endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/falco", methods=["POST"])
@@ -10875,12 +10866,12 @@ def falco():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🛡️  Starting Falco runtime monitoring for {duration}s")
+        logger.info(f"🛡️  Starting Falco runtime monitoring for {_sanitize_log(duration)}s")
         result = execute_command(command)
         logger.info(f"📊 Falco monitoring completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in falco endpoint: {str(e)}")
+        logger.error(f"💥 Error in falco endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/checkov", methods=["POST"])
@@ -10912,12 +10903,12 @@ def checkov():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Checkov IaC scan: {directory}")
+        logger.info(f"🔍 Starting Checkov IaC scan: {_sanitize_log(directory)}")
         result = execute_command(command)
         logger.info(f"📊 Checkov scan completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in checkov endpoint: {str(e)}")
+        logger.error(f"💥 Error in checkov endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/terrascan", methods=["POST"])
@@ -10946,12 +10937,12 @@ def terrascan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Terrascan IaC scan: {iac_dir}")
+        logger.info(f"🔍 Starting Terrascan IaC scan: {_sanitize_log(iac_dir)}")
         result = execute_command(command)
         logger.info(f"📊 Terrascan scan completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in terrascan endpoint: {str(e)}")
+        logger.error(f"💥 Error in terrascan endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/dirb", methods=["POST"])
@@ -10974,12 +10965,12 @@ def dirb():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"📁 Starting Dirb scan: {url}")
+        logger.info(f"📁 Starting Dirb scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Dirb scan completed for {url}")
+        logger.info(f"📊 Dirb scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in dirb endpoint: {str(e)}")
+        logger.error(f"💥 Error in dirb endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11003,12 +10994,12 @@ def nikto():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔬 Starting Nikto scan: {target}")
+        logger.info(f"🔬 Starting Nikto scan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Nikto scan completed for {target}")
+        logger.info(f"📊 Nikto scan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in nikto endpoint: {str(e)}")
+        logger.error(f"💥 Error in nikto endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11036,12 +11027,12 @@ def sqlmap():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"💉 Starting SQLMap scan: {url}")
+        logger.info(f"💉 Starting SQLMap scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 SQLMap scan completed for {url}")
+        logger.info(f"📊 SQLMap scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in sqlmap endpoint: {str(e)}")
+        logger.error(f"💥 Error in sqlmap endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11073,19 +11064,19 @@ def metasploit():
 
         command = f"msfconsole -q -r {resource_file}"
 
-        logger.info(f"🚀 Starting Metasploit module: {module}")
+        logger.info(f"🚀 Starting Metasploit module: {_sanitize_log(module)}")
         result = execute_command(command)
 
         # Clean up the temporary file
         try:
             os.remove(resource_file)
         except Exception as e:
-            logger.warning(f"Error removing temporary resource file: {str(e)}")
+            logger.warning(f"Error removing temporary resource file: {_sanitize_log(str(e))}")
 
-        logger.info(f"📊 Metasploit module completed: {module}")
+        logger.info(f"📊 Metasploit module completed: {_sanitize_log(module)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in metasploit endpoint: {str(e)}")
+        logger.error(f"💥 Error in metasploit endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11132,12 +11123,12 @@ def hydra():
 
         command += f" {target} {service}"
 
-        logger.info(f"🔑 Starting Hydra attack: {target}:{service}")
+        logger.info(f"🔑 Starting Hydra attack: {_sanitize_log(target)}:{_sanitize_log(service)}")
         result = execute_command(command)
-        logger.info(f"📊 Hydra attack completed for {target}")
+        logger.info(f"📊 Hydra attack completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in hydra endpoint: {str(e)}")
+        logger.error(f"💥 Error in hydra endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11171,12 +11162,12 @@ def john():
 
         command += f" {hash_file}"
 
-        logger.info(f"🔐 Starting John the Ripper: {hash_file}")
+        logger.info(f"🔐 Starting John the Ripper: {_sanitize_log(hash_file)}")
         result = execute_command(command)
         logger.info(f"📊 John the Ripper completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in john endpoint: {str(e)}")
+        logger.error(f"💥 Error in john endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11200,12 +11191,12 @@ def wpscan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting WPScan: {url}")
+        logger.info(f"🔍 Starting WPScan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 WPScan completed for {url}")
+        logger.info(f"📊 WPScan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in wpscan endpoint: {str(e)}")
+        logger.error(f"💥 Error in wpscan endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11226,12 +11217,12 @@ def enum4linux():
 
         command = f"enum4linux {additional_args} {target}"
 
-        logger.info(f"🔍 Starting Enum4linux: {target}")
+        logger.info(f"🔍 Starting Enum4linux: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Enum4linux completed for {target}")
+        logger.info(f"📊 Enum4linux completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in enum4linux endpoint: {str(e)}")
+        logger.error(f"💥 Error in enum4linux endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11269,12 +11260,12 @@ def ffuf():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting FFuf {mode} fuzzing: {url}")
+        logger.info(f"🔍 Starting FFuf {_sanitize_log(mode)} fuzzing: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 FFuf fuzzing completed for {url}")
+        logger.info(f"📊 FFuf fuzzing completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in ffuf endpoint: {str(e)}")
+        logger.error(f"💥 Error in ffuf endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11315,12 +11306,12 @@ def netexec():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting NetExec {protocol} scan: {target}")
+        logger.info(f"🔍 Starting NetExec {_sanitize_log(protocol)} scan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 NetExec scan completed for {target}")
+        logger.info(f"📊 NetExec scan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in netexec endpoint: {str(e)}")
+        logger.error(f"💥 Error in netexec endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11350,12 +11341,12 @@ def amass():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Amass {mode}: {domain}")
+        logger.info(f"🔍 Starting Amass {_sanitize_log(mode)}: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 Amass completed for {domain}")
+        logger.info(f"📊 Amass completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in amass endpoint: {str(e)}")
+        logger.error(f"💥 Error in amass endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11394,12 +11385,12 @@ def hashcat():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔐 Starting Hashcat attack: mode {attack_mode}")
+        logger.info(f"🔐 Starting Hashcat attack: mode {_sanitize_log(attack_mode)}")
         result = execute_command(command)
         logger.info(f"📊 Hashcat attack completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in hashcat endpoint: {str(e)}")
+        logger.error(f"💥 Error in hashcat endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11431,12 +11422,12 @@ def subfinder():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Subfinder: {domain}")
+        logger.info(f"🔍 Starting Subfinder: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 Subfinder completed for {domain}")
+        logger.info(f"📊 Subfinder completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in subfinder endpoint: {str(e)}")
+        logger.error(f"💥 Error in subfinder endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11472,12 +11463,12 @@ def smbmap():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting SMBMap: {target}")
+        logger.info(f"🔍 Starting SMBMap: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 SMBMap completed for {target}")
+        logger.info(f"📊 SMBMap completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in smbmap endpoint: {str(e)}")
+        logger.error(f"💥 Error in smbmap endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11514,12 +11505,12 @@ def rustscan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"⚡ Starting Rustscan: {target}")
+        logger.info(f"⚡ Starting Rustscan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Rustscan completed for {target}")
+        logger.info(f"📊 Rustscan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in rustscan endpoint: {str(e)}")
+        logger.error(f"💥 Error in rustscan endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/masscan", methods=["POST"])
@@ -11557,12 +11548,12 @@ def masscan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🚀 Starting Masscan: {target} at rate {rate}")
+        logger.info(f"🚀 Starting Masscan: {_sanitize_log(target)} at rate {_sanitize_log(rate)}")
         result = execute_command(command)
-        logger.info(f"📊 Masscan completed for {target}")
+        logger.info(f"📊 Masscan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in masscan endpoint: {str(e)}")
+        logger.error(f"💥 Error in masscan endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/nmap-advanced", methods=["POST"])
@@ -11612,12 +11603,12 @@ def nmap_advanced():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Advanced Nmap: {target}")
+        logger.info(f"🔍 Starting Advanced Nmap: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Advanced Nmap completed for {target}")
+        logger.info(f"📊 Advanced Nmap completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in advanced nmap endpoint: {str(e)}")
+        logger.error(f"💥 Error in advanced nmap endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/autorecon", methods=["POST"])
@@ -11648,12 +11639,12 @@ def autorecon():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔄 Starting AutoRecon: {target}")
+        logger.info(f"🔄 Starting AutoRecon: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 AutoRecon completed for {target}")
+        logger.info(f"📊 AutoRecon completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in autorecon endpoint: {str(e)}")
+        logger.error(f"💥 Error in autorecon endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/enum4linux-ng", methods=["POST"])
@@ -11703,12 +11694,12 @@ def enum4linux_ng():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Enum4linux-ng: {target}")
+        logger.info(f"🔍 Starting Enum4linux-ng: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Enum4linux-ng completed for {target}")
+        logger.info(f"📊 Enum4linux-ng completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in enum4linux-ng endpoint: {str(e)}")
+        logger.error(f"💥 Error in enum4linux-ng endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/rpcclient", methods=["POST"])
@@ -11747,12 +11738,12 @@ def rpcclient():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting rpcclient: {target}")
+        logger.info(f"🔍 Starting rpcclient: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 rpcclient completed for {target}")
+        logger.info(f"📊 rpcclient completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in rpcclient endpoint: {str(e)}")
+        logger.error(f"💥 Error in rpcclient endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/nbtscan", methods=["POST"])
@@ -11779,12 +11770,12 @@ def nbtscan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting nbtscan: {target}")
+        logger.info(f"🔍 Starting nbtscan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 nbtscan completed for {target}")
+        logger.info(f"📊 nbtscan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in nbtscan endpoint: {str(e)}")
+        logger.error(f"💥 Error in nbtscan endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/arp-scan", methods=["POST"])
@@ -11816,12 +11807,12 @@ def arp_scan():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting arp-scan: {target if target else 'local network'}")
+        logger.info(f"🔍 Starting arp-scan: {_sanitize_log(target if target else 'local network')}")
         result = execute_command(command)
         logger.info(f"📊 arp-scan completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in arp-scan endpoint: {str(e)}")
+        logger.error(f"💥 Error in arp-scan endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/responder", methods=["POST"])
@@ -11858,12 +11849,12 @@ def responder():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Responder on interface: {interface}")
+        logger.info(f"🔍 Starting Responder on interface: {_sanitize_log(interface)}")
         result = execute_command(command)
         logger.info(f"📊 Responder completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in responder endpoint: {str(e)}")
+        logger.error(f"💥 Error in responder endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/volatility", methods=["POST"])
@@ -11898,12 +11889,12 @@ def volatility():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🧠 Starting Volatility analysis: {plugin}")
+        logger.info(f"🧠 Starting Volatility analysis: {_sanitize_log(plugin)}")
         result = execute_command(command)
         logger.info(f"📊 Volatility analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in volatility endpoint: {str(e)}")
+        logger.error(f"💥 Error in volatility endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11943,12 +11934,12 @@ def msfvenom():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🚀 Starting MSFVenom payload generation: {payload}")
+        logger.info(f"🚀 Starting MSFVenom payload generation: {_sanitize_log(payload)}")
         result = execute_command(command)
         logger.info(f"📊 MSFVenom payload generated")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in msfvenom endpoint: {str(e)}")
+        logger.error(f"💥 Error in msfvenom endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -11989,19 +11980,19 @@ def gdb():
 
         command += " -batch"
 
-        logger.info(f"🔧 Starting GDB analysis: {binary}")
+        logger.info(f"🔧 Starting GDB analysis: {_sanitize_log(binary)}")
         result = execute_command(command)
 
         if commands and os.path.exists("/tmp/gdb_commands.txt"):
             try:
                 os.remove("/tmp/gdb_commands.txt")
-            except:
-                pass
+            except Exception:
+                logger.debug("Suppressed non-fatal error", exc_info=True)
 
-        logger.info(f"📊 GDB analysis completed for {binary}")
+        logger.info(f"📊 GDB analysis completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in gdb endpoint: {str(e)}")
+        logger.error(f"💥 Error in gdb endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12032,19 +12023,19 @@ def radare2():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting Radare2 analysis: {binary}")
+        logger.info(f"🔧 Starting Radare2 analysis: {_sanitize_log(binary)}")
         result = execute_command(command)
 
         if commands and os.path.exists("/tmp/r2_commands.txt"):
             try:
                 os.remove("/tmp/r2_commands.txt")
-            except:
-                pass
+            except Exception:
+                logger.debug("Suppressed non-fatal error", exc_info=True)
 
-        logger.info(f"📊 Radare2 analysis completed for {binary}")
+        logger.info(f"📊 Radare2 analysis completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in radare2 endpoint: {str(e)}")
+        logger.error(f"💥 Error in radare2 endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12074,12 +12065,12 @@ def binwalk():
 
         command += f" {file_path}"
 
-        logger.info(f"🔧 Starting Binwalk analysis: {file_path}")
+        logger.info(f"🔧 Starting Binwalk analysis: {_sanitize_log(file_path)}")
         result = execute_command(command)
-        logger.info(f"📊 Binwalk analysis completed for {file_path}")
+        logger.info(f"📊 Binwalk analysis completed for {_sanitize_log(file_path)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in binwalk endpoint: {str(e)}")
+        logger.error(f"💥 Error in binwalk endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12107,12 +12098,12 @@ def ropgadget():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting ROPgadget search: {binary}")
+        logger.info(f"🔧 Starting ROPgadget search: {_sanitize_log(binary)}")
         result = execute_command(command)
-        logger.info(f"📊 ROPgadget search completed for {binary}")
+        logger.info(f"📊 ROPgadget search completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in ropgadget endpoint: {str(e)}")
+        logger.error(f"💥 Error in ropgadget endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12132,12 +12123,12 @@ def checksec():
 
         command = f"checksec --file={binary}"
 
-        logger.info(f"🔧 Starting Checksec analysis: {binary}")
+        logger.info(f"🔧 Starting Checksec analysis: {_sanitize_log(binary)}")
         result = execute_command(command)
-        logger.info(f"📊 Checksec analysis completed for {binary}")
+        logger.info(f"📊 Checksec analysis completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in checksec endpoint: {str(e)}")
+        logger.error(f"💥 Error in checksec endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12168,12 +12159,12 @@ def xxd():
 
         command += f" {file_path}"
 
-        logger.info(f"🔧 Starting XXD hex dump: {file_path}")
+        logger.info(f"🔧 Starting XXD hex dump: {_sanitize_log(file_path)}")
         result = execute_command(command)
-        logger.info(f"📊 XXD hex dump completed for {file_path}")
+        logger.info(f"📊 XXD hex dump completed for {_sanitize_log(file_path)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in xxd endpoint: {str(e)}")
+        logger.error(f"💥 Error in xxd endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12200,12 +12191,12 @@ def strings():
 
         command += f" {file_path}"
 
-        logger.info(f"🔧 Starting Strings extraction: {file_path}")
+        logger.info(f"🔧 Starting Strings extraction: {_sanitize_log(file_path)}")
         result = execute_command(command)
-        logger.info(f"📊 Strings extraction completed for {file_path}")
+        logger.info(f"📊 Strings extraction completed for {_sanitize_log(file_path)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in strings endpoint: {str(e)}")
+        logger.error(f"💥 Error in strings endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12237,12 +12228,12 @@ def objdump():
 
         command += f" {binary}"
 
-        logger.info(f"🔧 Starting Objdump analysis: {binary}")
+        logger.info(f"🔧 Starting Objdump analysis: {_sanitize_log(binary)}")
         result = execute_command(command)
-        logger.info(f"📊 Objdump analysis completed for {binary}")
+        logger.info(f"📊 Objdump analysis completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in objdump endpoint: {str(e)}")
+        logger.error(f"💥 Error in objdump endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12259,7 +12250,6 @@ def ghidra():
         binary = params.get("binary", "")
         project_name = params.get("project_name", "hexstrike_analysis")
         script_file = params.get("script_file", "")
-        analysis_timeout = params.get("analysis_timeout", 300)
         output_format = params.get("output_format", "xml")
         additional_args = params.get("additional_args", "")
 
@@ -12283,12 +12273,12 @@ def ghidra():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting Ghidra analysis: {binary}")
-        result = execute_command(command, timeout=analysis_timeout)
-        logger.info(f"📊 Ghidra analysis completed for {binary}")
+        logger.info(f"🔧 Starting Ghidra analysis: {_sanitize_log(binary)}")
+        result = execute_command(command)
+        logger.info(f"📊 Ghidra analysis completed for {_sanitize_log(binary)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in ghidra endpoint: {str(e)}")
+        logger.error(f"💥 Error in ghidra endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/pwntools", methods=["POST"])
@@ -12351,19 +12341,19 @@ p.interactive()
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting Pwntools exploit: {exploit_type}")
+        logger.info(f"🔧 Starting Pwntools exploit: {_sanitize_log(exploit_type)}")
         result = execute_command(command)
 
         # Cleanup
         try:
             os.remove(script_file)
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         logger.info(f"📊 Pwntools exploit completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in pwntools endpoint: {str(e)}")
+        logger.error(f"💥 Error in pwntools endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/one-gadget", methods=["POST"])
@@ -12384,12 +12374,12 @@ def one_gadget():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting one_gadget analysis: {libc_path}")
+        logger.info(f"🔧 Starting one_gadget analysis: {_sanitize_log(libc_path)}")
         result = execute_command(command)
         logger.info(f"📊 one_gadget analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in one_gadget endpoint: {str(e)}")
+        logger.error(f"💥 Error in one_gadget endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/libc-database", methods=["POST"])
@@ -12425,12 +12415,12 @@ def libc_database():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting libc-database {action}: {symbols or libc_id}")
+        logger.info(f"🔧 Starting libc-database {_sanitize_log(action)}: {_sanitize_log(symbols or libc_id)}")
         result = execute_command(command)
-        logger.info(f"📊 libc-database {action} completed")
+        logger.info(f"📊 libc-database {_sanitize_log(action)} completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in libc-database endpoint: {str(e)}")
+        logger.error(f"💥 Error in libc-database endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/gdb-peda", methods=["POST"])
@@ -12479,20 +12469,20 @@ quit
             command += f" {additional_args}"
 
         target_info = binary or f'PID {attach_pid}' or core_file
-        logger.info(f"🔧 Starting GDB-PEDA analysis: {target_info}")
+        logger.info(f"🔧 Starting GDB-PEDA analysis: {_sanitize_log(target_info)}")
         result = execute_command(command)
 
         # Cleanup
         if commands and os.path.exists("/tmp/gdb_peda_commands.txt"):
             try:
                 os.remove("/tmp/gdb_peda_commands.txt")
-            except:
-                pass
+            except Exception:
+                logger.debug("Suppressed non-fatal error", exc_info=True)
 
         logger.info(f"📊 GDB-PEDA analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in gdb-peda endpoint: {str(e)}")
+        logger.error(f"💥 Error in gdb-peda endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/angr", methods=["POST"])
@@ -12571,19 +12561,19 @@ for func_addr, func in cfg.functions.items():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting angr analysis: {binary}")
-        result = execute_command(command, timeout=600)  # Longer timeout for symbolic execution
+        logger.info(f"🔧 Starting angr analysis: {_sanitize_log(binary)}")
+        result = execute_command(command)  # symbolic execution can be slow
 
         # Cleanup
         try:
             os.remove(script_file)
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         logger.info(f"📊 angr analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in angr endpoint: {str(e)}")
+        logger.error(f"💥 Error in angr endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/ropper", methods=["POST"])
@@ -12625,12 +12615,12 @@ def ropper():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting ropper analysis: {binary}")
+        logger.info(f"🔧 Starting ropper analysis: {_sanitize_log(binary)}")
         result = execute_command(command)
         logger.info(f"📊 ropper analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in ropper endpoint: {str(e)}")
+        logger.error(f"💥 Error in ropper endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/pwninit", methods=["POST"])
@@ -12662,12 +12652,12 @@ def pwninit():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔧 Starting pwninit setup: {binary}")
+        logger.info(f"🔧 Starting pwninit setup: {_sanitize_log(binary)}")
         result = execute_command(command)
         logger.info(f"📊 pwninit setup completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in pwninit endpoint: {str(e)}")
+        logger.error(f"💥 Error in pwninit endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -12695,12 +12685,12 @@ def feroxbuster():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Feroxbuster scan: {url}")
+        logger.info(f"🔍 Starting Feroxbuster scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Feroxbuster scan completed for {url}")
+        logger.info(f"📊 Feroxbuster scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in feroxbuster endpoint: {str(e)}")
+        logger.error(f"💥 Error in feroxbuster endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12727,12 +12717,12 @@ def dotdotpwn():
 
         command += " -b"
 
-        logger.info(f"🔍 Starting DotDotPwn scan: {target}")
+        logger.info(f"🔍 Starting DotDotPwn scan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 DotDotPwn scan completed for {target}")
+        logger.info(f"📊 DotDotPwn scan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in dotdotpwn endpoint: {str(e)}")
+        logger.error(f"💥 Error in dotdotpwn endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12760,12 +12750,12 @@ def xsser():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting XSSer scan: {url}")
+        logger.info(f"🔍 Starting XSSer scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 XSSer scan completed for {url}")
+        logger.info(f"📊 XSSer scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in xsser endpoint: {str(e)}")
+        logger.error(f"💥 Error in xsser endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12790,12 +12780,12 @@ def wfuzz():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Wfuzz scan: {url}")
+        logger.info(f"🔍 Starting Wfuzz scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Wfuzz scan completed for {url}")
+        logger.info(f"📊 Wfuzz scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in wfuzz endpoint: {str(e)}")
+        logger.error(f"💥 Error in wfuzz endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -12828,12 +12818,12 @@ def dirsearch():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"📁 Starting Dirsearch scan: {url}")
+        logger.info(f"📁 Starting Dirsearch scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Dirsearch scan completed for {url}")
+        logger.info(f"📊 Dirsearch scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in dirsearch endpoint: {str(e)}")
+        logger.error(f"💥 Error in dirsearch endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/katana", methods=["POST"])
@@ -12866,12 +12856,12 @@ def katana():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"⚔️  Starting Katana crawl: {url}")
+        logger.info(f"⚔️  Starting Katana crawl: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Katana crawl completed for {url}")
+        logger.info(f"📊 Katana crawl completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in katana endpoint: {str(e)}")
+        logger.error(f"💥 Error in katana endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/gau", methods=["POST"])
@@ -12903,12 +12893,12 @@ def gau():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"📡 Starting Gau URL discovery: {domain}")
+        logger.info(f"📡 Starting Gau URL discovery: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 Gau URL discovery completed for {domain}")
+        logger.info(f"📊 Gau URL discovery completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in gau endpoint: {str(e)}")
+        logger.error(f"💥 Error in gau endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/waybackurls", methods=["POST"])
@@ -12936,12 +12926,12 @@ def waybackurls():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🕰️  Starting Waybackurls discovery: {domain}")
+        logger.info(f"🕰️  Starting Waybackurls discovery: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 Waybackurls discovery completed for {domain}")
+        logger.info(f"📊 Waybackurls discovery completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in waybackurls endpoint: {str(e)}")
+        logger.error(f"💥 Error in waybackurls endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/arjun", methods=["POST"])
@@ -12975,12 +12965,12 @@ def arjun():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🎯 Starting Arjun parameter discovery: {url}")
+        logger.info(f"🎯 Starting Arjun parameter discovery: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Arjun parameter discovery completed for {url}")
+        logger.info(f"📊 Arjun parameter discovery completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in arjun endpoint: {str(e)}")
+        logger.error(f"💥 Error in arjun endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/paramspider", methods=["POST"])
@@ -13009,12 +12999,12 @@ def paramspider():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🕷️  Starting ParamSpider mining: {domain}")
+        logger.info(f"🕷️  Starting ParamSpider mining: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 ParamSpider mining completed for {domain}")
+        logger.info(f"📊 ParamSpider mining completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in paramspider endpoint: {str(e)}")
+        logger.error(f"💥 Error in paramspider endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/x8", methods=["POST"])
@@ -13044,12 +13034,12 @@ def x8():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting x8 parameter discovery: {url}")
+        logger.info(f"🔍 Starting x8 parameter discovery: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 x8 parameter discovery completed for {url}")
+        logger.info(f"📊 x8 parameter discovery completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in x8 endpoint: {str(e)}")
+        logger.error(f"💥 Error in x8 endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/jaeles", methods=["POST"])
@@ -13079,12 +13069,12 @@ def jaeles():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔬 Starting Jaeles vulnerability scan: {url}")
+        logger.info(f"🔬 Starting Jaeles vulnerability scan: {_sanitize_log(url)}")
         result = execute_command(command)
-        logger.info(f"📊 Jaeles vulnerability scan completed for {url}")
+        logger.info(f"📊 Jaeles vulnerability scan completed for {_sanitize_log(url)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in jaeles endpoint: {str(e)}")
+        logger.error(f"💥 Error in jaeles endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/dalfox", methods=["POST"])
@@ -13124,12 +13114,12 @@ def dalfox():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🎯 Starting Dalfox XSS scan: {url if url else 'pipe mode'}")
+        logger.info(f"🎯 Starting Dalfox XSS scan: {_sanitize_log(url if url else 'pipe mode')}")
         result = execute_command(command)
         logger.info(f"📊 Dalfox XSS scan completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in dalfox endpoint: {str(e)}")
+        logger.error(f"💥 Error in dalfox endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/httpx", methods=["POST"])
@@ -13174,12 +13164,12 @@ def httpx():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🌍 Starting httpx probe: {target}")
+        logger.info(f"🌍 Starting httpx probe: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 httpx probe completed for {target}")
+        logger.info(f"📊 httpx probe completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in httpx endpoint: {str(e)}")
+        logger.error(f"💥 Error in httpx endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/anew", methods=["POST"])
@@ -13208,7 +13198,7 @@ def anew():
         logger.info("📊 anew data processing completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in anew endpoint: {str(e)}")
+        logger.error(f"💥 Error in anew endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/qsreplace", methods=["POST"])
@@ -13234,7 +13224,7 @@ def qsreplace():
         logger.info("📊 qsreplace parameter replacement completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in qsreplace endpoint: {str(e)}")
+        logger.error(f"💥 Error in qsreplace endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/uro", methods=["POST"])
@@ -13267,7 +13257,7 @@ def uro():
         logger.info("📊 uro URL filtering completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in uro endpoint: {str(e)}")
+        logger.error(f"💥 Error in uro endpoint: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -13359,7 +13349,7 @@ class HTTPTestingFramework:
             }
 
         except Exception as e:
-            logger.error(f"{ModernVisualEngine.format_error_card('ERROR', 'HTTP-Framework', str(e))}")
+            logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'HTTP-Framework', str(e)))}")
             return {'success': False, 'error': str(e)}
 
     # ----------------- Match & Replace and Scope -----------------
@@ -13388,7 +13378,6 @@ class HTTPTestingFramework:
         return False
 
     def _apply_match_replace(self, url: str, data, headers: dict):
-        import re
         from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
         original_url = url
         out_headers = dict(headers)
@@ -13420,7 +13409,7 @@ class HTTPTestingFramework:
                 continue
         # Ensure scope restriction
         if not self._in_scope(url):
-            logger.warning(f"{ModernVisualEngine.format_tool_status('HTTP-Framework', 'SKIPPED', f'Out of scope: {url}')}" )
+            logger.warning(f"{ModernVisualEngine.format_tool_status('HTTP-Framework', 'SKIPPED', f'Out of scope: {_sanitize_log(url)}')}" )
             return original_url, data, headers
         return url, out_data, out_headers
 
@@ -13605,7 +13594,7 @@ class HTTPTestingFramework:
                             forms.append(form_data)
 
                 except Exception as e:
-                    logger.warning(f"Error spidering {current_url}: {str(e)}")
+                    logger.warning(f"Error spidering {_sanitize_log(current_url)}: {_sanitize_log(str(e))}")
                     continue
 
             return {
@@ -13617,7 +13606,7 @@ class HTTPTestingFramework:
             }
 
         except Exception as e:
-            logger.error(f"{ModernVisualEngine.format_error_card('ERROR', 'Spider', str(e))}")
+            logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'Spider', str(e)))}")
             return {'success': False, 'error': str(e)}
 
 class BrowserAgent:
@@ -13662,11 +13651,11 @@ class BrowserAgent:
             self.driver = webdriver.Chrome(options=chrome_options)
             self.driver.set_page_load_timeout(30)
 
-            logger.info(f"{ModernVisualEngine.format_tool_status('BrowserAgent', 'RUNNING', 'Chrome Browser Initialized')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('BrowserAgent', 'RUNNING', 'Chrome Browser Initialized'))}")
             return True
 
         except Exception as e:
-            logger.error(f"{ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e))}")
+            logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e)))}")
             return False
 
     def navigate_and_inspect(self, url: str, wait_time: int = 5) -> dict:
@@ -13677,7 +13666,7 @@ class BrowserAgent:
                     return {'success': False, 'error': 'Failed to setup browser'}
 
             nav_command = f'Navigate to {url}'
-            logger.info(f"{ModernVisualEngine.format_command_execution(nav_command, 'STARTING')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_command_execution(nav_command, 'STARTING'))}")
 
             # Navigate to URL
             self.driver.get(url)
@@ -13721,7 +13710,7 @@ class BrowserAgent:
             security_analysis['security_score'] = max(0, 100 - (security_analysis['total_issues'] * 5))
             security_analysis['passive_modules'] = extended_passive.get('modules', [])
 
-            logger.info(f"{ModernVisualEngine.format_tool_status('BrowserAgent', 'SUCCESS', url)}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('BrowserAgent', 'SUCCESS', url))}")
 
             return {
                 'success': True,
@@ -13732,7 +13721,7 @@ class BrowserAgent:
             }
 
         except Exception as e:
-            logger.error(f"{ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e))}")
+            logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e)))}")
             return {'success': False, 'error': str(e)}
 
     # ---------------------- Browser Deep Introspection Helpers ----------------------
@@ -13780,7 +13769,7 @@ class BrowserAgent:
             if csp and "unsafe-inline" in csp:
                 issues.append({'type':'weak_csp','severity':'low','description':'CSP allows unsafe-inline scripts'})
         except Exception:
-            pass
+            logger.debug("Suppressed non-fatal error", exc_info=True)
         return issues
 
     def _detect_mixed_content(self, page_info: dict) -> list:
@@ -13793,7 +13782,7 @@ class BrowserAgent:
                     if u.startswith('http://'):
                         issues.append({'type':'mixed_content','severity':'medium','description':f'HTTP resource loaded over HTTPS page: {u[:100]}'})
         except Exception:
-            pass
+            logger.debug("Suppressed non-fatal error", exc_info=True)
         return issues
 
     def _extended_passive_analysis(self, page_info: dict, page_source: str) -> dict:
@@ -13838,7 +13827,7 @@ class BrowserAgent:
                     from urllib.parse import urljoin
                     action = urljoin(base, action)
                 except Exception:
-                    pass
+                    logger.debug("Suppressed non-fatal error", exc_info=True)
             test_url = action + ('&' if '?' in action else '?') + '&'.join(params)
             try:
                 r = requests.get(test_url, timeout=8, verify=False)
@@ -13862,7 +13851,7 @@ class BrowserAgent:
                 }
                 return storage;
             """)
-        except:
+        except Exception:
             return {}
 
     def _get_session_storage(self) -> dict:
@@ -13876,7 +13865,7 @@ class BrowserAgent:
                 }
                 return storage;
             """)
-        except:
+        except Exception:
             return {}
 
     def _extract_forms(self) -> list:
@@ -13900,8 +13889,8 @@ class BrowserAgent:
                     })
 
                 forms.append(form_data)
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         return forms
 
@@ -13917,8 +13906,8 @@ class BrowserAgent:
                         'href': href,
                         'text': link.text[:100]  # Limit text length
                     })
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         return links
 
@@ -13934,8 +13923,8 @@ class BrowserAgent:
                     'id': input_elem.get_attribute('id') or '',
                     'placeholder': input_elem.get_attribute('placeholder') or ''
                 })
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         return inputs
 
@@ -13955,8 +13944,8 @@ class BrowserAgent:
                             'type': 'inline',
                             'content': content[:1000]  # Limit content
                         })
-        except:
-            pass
+        except Exception:
+            logger.debug("Suppressed non-fatal error", exc_info=True)
 
         return scripts
 
@@ -13978,7 +13967,7 @@ class BrowserAgent:
                     })
 
             return network_requests
-        except:
+        except Exception:
             return []
 
     def _analyze_page_security(self, page_source: str, page_info: dict) -> dict:
@@ -14030,7 +14019,7 @@ class BrowserAgent:
         if self.driver:
             self.driver.quit()
             self.driver = None
-            logger.info(f"{ModernVisualEngine.format_tool_status('BrowserAgent', 'SUCCESS', 'Browser Closed')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('BrowserAgent', 'SUCCESS', 'Browser Closed'))}")
 
 # Global instances
 http_framework = HTTPTestingFramework()
@@ -14048,20 +14037,20 @@ def http_framework_endpoint():
         headers = params.get("headers", {})
         cookies = params.get("cookies", {})
 
-        logger.info(f"{ModernVisualEngine.create_section_header('HTTP FRAMEWORK', '🔥', 'FIRE_RED')}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.create_section_header('HTTP FRAMEWORK', '🔥', 'FIRE_RED'))}")
 
         if action == "request":
             if not url:
                 return jsonify({"error": "URL parameter is required for request action"}), 400
 
             request_command = f"{method} {url}"
-            logger.info(f"{ModernVisualEngine.format_command_execution(request_command, 'STARTING')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_command_execution(request_command, 'STARTING'))}")
             result = http_framework.intercept_request(url, method, data, headers, cookies)
 
             if result.get("success"):
-                logger.info(f"{ModernVisualEngine.format_tool_status('HTTP-Framework', 'SUCCESS', url)}")
+                logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('HTTP-Framework', 'SUCCESS', url))}")
             else:
-                logger.error(f"{ModernVisualEngine.format_tool_status('HTTP-Framework', 'FAILED', url)}")
+                logger.error(f"{_sanitize_log(ModernVisualEngine.format_tool_status('HTTP-Framework', 'FAILED', url))}")
 
             return jsonify(result)
 
@@ -14073,15 +14062,15 @@ def http_framework_endpoint():
             max_pages = params.get("max_pages", 100)
 
             spider_command = f"Spider {url}"
-            logger.info(f"{ModernVisualEngine.format_command_execution(spider_command, 'STARTING')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_command_execution(spider_command, 'STARTING'))}")
             result = http_framework.spider_website(url, max_depth, max_pages)
 
             if result.get("success"):
                 total_pages = result.get("total_pages", 0)
                 pages_info = f"{total_pages} pages"
-                logger.info(f"{ModernVisualEngine.format_tool_status('HTTP-Spider', 'SUCCESS', pages_info)}")
+                logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('HTTP-Spider', 'SUCCESS', pages_info))}")
             else:
-                logger.error(f"{ModernVisualEngine.format_tool_status('HTTP-Spider', 'FAILED', url)}")
+                logger.error(f"{_sanitize_log(ModernVisualEngine.format_tool_status('HTTP-Spider', 'FAILED', url))}")
 
             return jsonify(result)
 
@@ -14129,7 +14118,7 @@ def http_framework_endpoint():
             return jsonify({"error": f"Unknown action: {action}"}), 400
 
     except Exception as e:
-        logger.error(f"{ModernVisualEngine.format_error_card('ERROR', 'HTTP-Framework', str(e))}")
+        logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'HTTP-Framework', str(e)))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/tools/browser-agent", methods=["POST"])
@@ -14145,7 +14134,7 @@ def browser_agent_endpoint():
         active_tests = params.get("active_tests", False)
 
         logger.info(
-            f"{ModernVisualEngine.create_section_header('BROWSER AGENT', '🌐', 'CRIMSON')}"
+            f"{_sanitize_log(ModernVisualEngine.create_section_header('BROWSER AGENT', '🌐', 'CRIMSON'))}"
         )
 
         if action == "navigate":
@@ -14217,7 +14206,7 @@ def browser_agent_endpoint():
 
     except Exception as e:
         logger.error(
-            f"{ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e))}"
+            f"{_sanitize_log(ModernVisualEngine.format_error_card('ERROR', 'BrowserAgent', str(e)))}"
         )
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
@@ -14235,9 +14224,9 @@ def burpsuite_alternative():
         if not target:
             return jsonify({"error": "Target parameter is required"}), 400
 
-        logger.info(f"{ModernVisualEngine.create_section_header('BURP SUITE ALTERNATIVE', '🔥', 'BLOOD_RED')}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.create_section_header('BURP SUITE ALTERNATIVE', '🔥', 'BLOOD_RED'))}")
         scan_message = f'Starting {scan_type} scan of {target}'
-        logger.info(f"{ModernVisualEngine.format_highlighted_text(scan_message, 'RED')}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.format_highlighted_text(scan_message, 'RED'))}")
 
         results = {
             'target': target,
@@ -14248,7 +14237,7 @@ def burpsuite_alternative():
 
         # Phase 1: Browser-based reconnaissance
         if scan_type in ['comprehensive', 'spider']:
-            logger.info(f"{ModernVisualEngine.format_tool_status('BrowserAgent', 'RUNNING', 'Reconnaissance Phase')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('BrowserAgent', 'RUNNING', 'Reconnaissance Phase'))}")
 
             if not browser_agent.driver:
                 browser_agent.setup_browser(headless)
@@ -14258,14 +14247,14 @@ def burpsuite_alternative():
 
         # Phase 2: HTTP spidering
         if scan_type in ['comprehensive', 'spider']:
-            logger.info(f"{ModernVisualEngine.format_tool_status('HTTP-Spider', 'RUNNING', 'Discovery Phase')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('HTTP-Spider', 'RUNNING', 'Discovery Phase'))}")
 
             spider_result = http_framework.spider_website(target, max_depth, max_pages)
             results['spider_analysis'] = spider_result
 
         # Phase 3: Vulnerability analysis
         if scan_type in ['comprehensive', 'active']:
-            logger.info(f"{ModernVisualEngine.format_tool_status('VulnScanner', 'RUNNING', 'Analysis Phase')}")
+            logger.info(f"{_sanitize_log(ModernVisualEngine.format_tool_status('VulnScanner', 'RUNNING', 'Analysis Phase'))}")
 
             # Test discovered endpoints
             discovered_urls = results.get('spider_analysis', {}).get('discovered_urls', [target])
@@ -14297,23 +14286,19 @@ def burpsuite_alternative():
         }
 
         # Display summary with enhanced colors
-        logger.info(f"{ModernVisualEngine.create_section_header('SCAN COMPLETE', '✅', 'SUCCESS')}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.create_section_header('SCAN COMPLETE', '✅', 'SUCCESS'))}")
         vuln_message = f'Found {total_vulns} vulnerabilities'
         color_choice = 'YELLOW' if total_vulns > 0 else 'GREEN'
-        logger.info(f"{ModernVisualEngine.format_highlighted_text(vuln_message, color_choice)}")
+        logger.info(f"{_sanitize_log(ModernVisualEngine.format_highlighted_text(vuln_message, color_choice))}")
 
         for severity, count in vuln_summary.items():
-            logger.info(f"  {ModernVisualEngine.format_vulnerability_severity(severity, count)}")
+            logger.info(f"  {_sanitize_log(ModernVisualEngine.format_vulnerability_severity(severity, count))}")
 
         return jsonify(results)
 
     except Exception as e:
-        logger.error(f"{ModernVisualEngine.format_error_card('CRITICAL', 'BurpAlternative', str(e))}")
+        logger.error(f"{_sanitize_log(ModernVisualEngine.format_error_card('CRITICAL', 'BurpAlternative', str(e)))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
-        logger.error(f"💥 Error in burpsuite endpoint: {str(e)}")
-        return jsonify({
-            "error": f"Server error: {str(e)}"
-        }), 500
 
 @app.route("/api/tools/zap", methods=["POST"])
 def zap():
@@ -14355,12 +14340,12 @@ def zap():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting ZAP scan: {target}")
+        logger.info(f"🔍 Starting ZAP scan: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 ZAP scan completed for {target}")
+        logger.info(f"📊 ZAP scan completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in zap endpoint: {str(e)}")
+        logger.error(f"💥 Error in zap endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -14384,12 +14369,12 @@ def wafw00f():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🛡️ Starting Wafw00f WAF detection: {target}")
+        logger.info(f"🛡️ Starting Wafw00f WAF detection: {_sanitize_log(target)}")
         result = execute_command(command)
-        logger.info(f"📊 Wafw00f completed for {target}")
+        logger.info(f"📊 Wafw00f completed for {_sanitize_log(target)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in wafw00f endpoint: {str(e)}")
+        logger.error(f"💥 Error in wafw00f endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -14417,12 +14402,12 @@ def fierce():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting Fierce DNS recon: {domain}")
+        logger.info(f"🔍 Starting Fierce DNS recon: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 Fierce completed for {domain}")
+        logger.info(f"📊 Fierce completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in fierce endpoint: {str(e)}")
+        logger.error(f"💥 Error in fierce endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -14454,12 +14439,12 @@ def dnsenum():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🔍 Starting DNSenum: {domain}")
+        logger.info(f"🔍 Starting DNSenum: {_sanitize_log(domain)}")
         result = execute_command(command)
-        logger.info(f"📊 DNSenum completed for {domain}")
+        logger.info(f"📊 DNSenum completed for {_sanitize_log(domain)}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in dnsenum endpoint: {str(e)}")
+        logger.error(f"💥 Error in dnsenum endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -14476,7 +14461,7 @@ def install_python_package():
         if not package:
             return jsonify({"error": "Package name is required"}), 400
 
-        logger.info(f"📦 Installing Python package: {package} in env {env_name}")
+        logger.info(f"📦 Installing Python package: {_sanitize_log(package)} in env {_sanitize_log(env_name)}")
         success = env_manager.install_package(env_name, package)
 
         if success:
@@ -14492,7 +14477,7 @@ def install_python_package():
             }), 500
 
     except Exception as e:
-        logger.error(f"💥 Error installing Python package: {str(e)}")
+        logger.error(f"💥 Error installing Python package: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/python/execute", methods=["POST"])
@@ -14518,7 +14503,7 @@ def execute_python_script():
 
         # Execute script
         command = f"{python_path} {script_path}"
-        logger.info(f"🐍 Executing Python script in env {env_name}: {filename}")
+        logger.info(f"🐍 Executing Python script in env {_sanitize_log(env_name)}: {_sanitize_log(filename)}")
         result = execute_command(command, use_cache=False)
 
         # Clean up script file
@@ -14530,7 +14515,7 @@ def execute_python_script():
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error executing Python script: {str(e)}")
+        logger.error(f"💥 Error executing Python script: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -14758,10 +14743,10 @@ def ai_generate_payload():
             "url": params.get("url", "")
         }
 
-        logger.info(f"🤖 Generating AI payloads for {target_info['attack_type']} attack")
+        logger.info(f"🤖 Generating AI payloads for {_sanitize_log(target_info['attack_type'])} attack")
         result = ai_payload_generator.generate_contextual_payload(target_info)
 
-        logger.info(f"✅ Generated {result['payload_count']} contextual payloads")
+        logger.info(f"✅ Generated {_sanitize_log(result['payload_count'])} contextual payloads")
 
         return jsonify({
             "success": True,
@@ -14770,7 +14755,7 @@ def ai_generate_payload():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in AI payload generation: {str(e)}")
+        logger.error(f"💥 Error in AI payload generation: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -14791,7 +14776,7 @@ def ai_test_payload():
                 "error": "Payload and target_url are required"
             }), 400
 
-        logger.info(f"🧪 Testing AI-generated payload against {target_url}")
+        logger.info(f"🧪 Testing AI-generated payload against {_sanitize_log(target_url)}")
 
         # Create test command based on method and payload
         if method.upper() == "GET":
@@ -14818,7 +14803,7 @@ def ai_test_payload():
             ]
         }
 
-        logger.info(f"🔍 Payload test completed | Potential vuln: {analysis['potential_vulnerability']}")
+        logger.info(f"🔍 Payload test completed | Potential vuln: {_sanitize_log(analysis['potential_vulnerability'])}")
 
         return jsonify({
             "success": True,
@@ -14828,7 +14813,7 @@ def ai_test_payload():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in AI payload testing: {str(e)}")
+        logger.error(f"💥 Error in AI payload testing: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -14869,7 +14854,7 @@ def api_fuzzer():
                         "result": result
                     })
 
-            logger.info(f"🔍 API endpoint testing completed for {len(endpoints)} endpoints")
+            logger.info(f"🔍 API endpoint testing completed for {_sanitize_log(len(endpoints))} endpoints")
             return jsonify({
                 "success": True,
                 "fuzzing_type": "endpoint_testing",
@@ -14879,7 +14864,7 @@ def api_fuzzer():
             # Discover endpoints using wordlist
             command = f"ffuf -u {base_url}/FUZZ -w {wordlist} -mc 200,201,202,204,301,302,307,401,403,405 -t 50"
 
-            logger.info(f"🔍 Starting API endpoint discovery: {base_url}")
+            logger.info(f"🔍 Starting API endpoint discovery: {_sanitize_log(base_url)}")
             result = execute_command(command)
             logger.info(f"📊 API endpoint discovery completed")
 
@@ -14890,7 +14875,7 @@ def api_fuzzer():
             })
 
     except Exception as e:
-        logger.error(f"💥 Error in API fuzzer: {str(e)}")
+        logger.error(f"💥 Error in API fuzzer: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -14903,7 +14888,6 @@ def graphql_scanner():
         endpoint = params.get("endpoint", "")
         introspection = params.get("introspection", True)
         query_depth = params.get("query_depth", 10)
-        mutations = params.get("test_mutations", True)
 
         if not endpoint:
             logger.warning("🌐 GraphQL Scanner called without endpoint parameter")
@@ -14911,7 +14895,7 @@ def graphql_scanner():
                 "error": "GraphQL endpoint parameter is required"
             }), 400
 
-        logger.info(f"🔍 Starting GraphQL security scan: {endpoint}")
+        logger.info(f"🔍 Starting GraphQL security scan: {_sanitize_log(endpoint)}")
 
         results = {
             "endpoint": endpoint,
@@ -14989,7 +14973,7 @@ def graphql_scanner():
                 "Add authentication for sensitive operations"
             ]
 
-        logger.info(f"📊 GraphQL scan completed | Vulnerabilities found: {len(results['vulnerabilities'])}")
+        logger.info(f"📊 GraphQL scan completed | Vulnerabilities found: {_sanitize_log(len(results['vulnerabilities']))}")
 
         return jsonify({
             "success": True,
@@ -14997,7 +14981,7 @@ def graphql_scanner():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in GraphQL scanner: {str(e)}")
+        logger.error(f"💥 Error in GraphQL scanner: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15081,7 +15065,7 @@ def jwt_analyzer():
                         "description": f"Token decoding failed: {str(decode_error)}"
                     })
 
-        except Exception as e:
+        except Exception:
             results["vulnerabilities"].append({
                 "type": "invalid_format",
                 "severity": "HIGH",
@@ -15107,7 +15091,7 @@ def jwt_analyzer():
                         "description": "Server accepts tokens with 'none' algorithm"
                     })
 
-        logger.info(f"📊 JWT analysis completed | Vulnerabilities found: {len(results['vulnerabilities'])}")
+        logger.info(f"📊 JWT analysis completed | Vulnerabilities found: {_sanitize_log(len(results['vulnerabilities']))}")
 
         return jsonify({
             "success": True,
@@ -15115,7 +15099,7 @@ def jwt_analyzer():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in JWT analyzer: {str(e)}")
+        logger.error(f"💥 Error in JWT analyzer: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15134,7 +15118,7 @@ def api_schema_analyzer():
                 "error": "Schema URL parameter is required"
             }), 400
 
-        logger.info(f"🔍 Starting API schema analysis: {schema_url}")
+        logger.info(f"🔍 Starting API schema analysis: {_sanitize_log(schema_url)}")
 
         # Fetch schema
         command = f"curl -s '{schema_url}'"
@@ -15215,7 +15199,7 @@ def api_schema_analyzer():
                 "description": "Schema is not valid JSON"
             })
 
-        logger.info(f"📊 Schema analysis completed | Issues found: {len(analysis_results['security_issues'])}")
+        logger.info(f"📊 Schema analysis completed | Issues found: {_sanitize_log(len(analysis_results['security_issues']))}")
 
         return jsonify({
             "success": True,
@@ -15223,7 +15207,7 @@ def api_schema_analyzer():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in API schema analyzer: {str(e)}")
+        logger.error(f"💥 Error in API schema analyzer: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15262,12 +15246,12 @@ def volatility3():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🧠 Starting Volatility3 analysis: {plugin}")
+        logger.info(f"🧠 Starting Volatility3 analysis: {_sanitize_log(plugin)}")
         result = execute_command(command)
         logger.info(f"📊 Volatility3 analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in volatility3 endpoint: {str(e)}")
+        logger.error(f"💥 Error in volatility3 endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15301,13 +15285,13 @@ def foremost():
 
         command += f" {input_file}"
 
-        logger.info(f"📁 Starting Foremost file carving: {input_file}")
+        logger.info(f"📁 Starting Foremost file carving: {_sanitize_log(input_file)}")
         result = execute_command(command)
         result["output_directory"] = output_dir
         logger.info(f"📊 Foremost carving completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in foremost endpoint: {str(e)}")
+        logger.error(f"💥 Error in foremost endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15351,12 +15335,12 @@ def steghide():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🖼️ Starting Steghide {action}: {cover_file}")
+        logger.info(f"🖼️ Starting Steghide {_sanitize_log(action)}: {_sanitize_log(cover_file)}")
         result = execute_command(command)
-        logger.info(f"📊 Steghide {action} completed")
+        logger.info(f"📊 Steghide {_sanitize_log(action)} completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in steghide endpoint: {str(e)}")
+        logger.error(f"💥 Error in steghide endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15390,12 +15374,12 @@ def exiftool():
 
         command += f" {file_path}"
 
-        logger.info(f"📷 Starting ExifTool analysis: {file_path}")
+        logger.info(f"📷 Starting ExifTool analysis: {_sanitize_log(file_path)}")
         result = execute_command(command)
         logger.info(f"📊 ExifTool analysis completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in exiftool endpoint: {str(e)}")
+        logger.error(f"💥 Error in exiftool endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15427,7 +15411,7 @@ def hashpump():
         logger.info(f"📊 HashPump attack completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in hashpump endpoint: {str(e)}")
+        logger.error(f"💥 Error in hashpump endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15479,12 +15463,12 @@ def hakrawler():
         if additional_args:
             command += f" {additional_args}"
 
-        logger.info(f"🕷️ Starting Hakrawler crawling: {url}")
+        logger.info(f"🕷️ Starting Hakrawler crawling: {_sanitize_log(url)}")
         result = execute_command(command)
         logger.info(f"📊 Hakrawler crawling completed")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"💥 Error in hakrawler endpoint: {str(e)}")
+        logger.error(f"💥 Error in hakrawler endpoint: {_sanitize_log(str(e))}")
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
@@ -15502,7 +15486,7 @@ def cve_monitor():
         severity_filter = params.get("severity_filter", "HIGH,CRITICAL")
         keywords = params.get("keywords", "")
 
-        logger.info(f"🔍 Monitoring CVE feeds for last {hours} hours with severity filter: {severity_filter}")
+        logger.info(f"🔍 Monitoring CVE feeds for last {_sanitize_log(hours)} hours with severity filter: {_sanitize_log(severity_filter)}")
 
         # Fetch latest CVEs
         cve_results = cve_intelligence.fetch_latest_cves(hours, severity_filter)
@@ -15537,11 +15521,11 @@ def cve_monitor():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"📊 CVE monitoring completed | Found: {len(cve_results.get('cves', []))} CVEs")
+        logger.info(f"📊 CVE monitoring completed | Found: {_sanitize_log(len(cve_results.get('cves', [])))} CVEs")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in CVE monitoring: {str(e)}")
+        logger.error(f"💥 Error in CVE monitoring: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -15576,7 +15560,7 @@ def exploit_generate():
                 "error": "CVE ID parameter is required"
             }), 400
 
-        logger.info(f"🤖 Generating exploit for {cve_id} | Target: {target_os} {target_arch}")
+        logger.info(f"🤖 Generating exploit for {_sanitize_log(cve_id)} | Target: {_sanitize_log(target_os)} {_sanitize_log(target_arch)}")
 
         # First analyze the CVE for context
         cve_analysis = cve_intelligence.analyze_cve_exploitability(cve_id)
@@ -15610,11 +15594,11 @@ def exploit_generate():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"🎯 Exploit generation completed for {cve_id}")
+        logger.info(f"🎯 Exploit generation completed for {_sanitize_log(cve_id)}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in exploit generation: {str(e)}")
+        logger.error(f"💥 Error in exploit generation: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -15636,7 +15620,7 @@ def discover_attack_chains():
                 "error": "Target software parameter is required"
             }), 400
 
-        logger.info(f"🔗 Discovering attack chains for {target_software} | Depth: {attack_depth}")
+        logger.info(f"🔗 Discovering attack chains for {_sanitize_log(target_software)} | Depth: {_sanitize_log(attack_depth)}")
 
         # Discover attack chains
         chain_results = vulnerability_correlator.find_attack_chains(target_software, attack_depth)
@@ -15666,7 +15650,7 @@ def discover_attack_chains():
 
                             if exploit_result.get("success"):
                                 enhanced_stage["exploit_code"] = exploit_result.get("exploit_code", "")[:500] + "..."
-                        except:
+                        except Exception:
                             enhanced_stage["exploit_available"] = False
 
                     enhanced_stages.append(enhanced_stage)
@@ -15687,11 +15671,11 @@ def discover_attack_chains():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"🎯 Attack chain discovery completed | Found: {len(chain_results.get('attack_chains', []))} chains")
+        logger.info(f"🎯 Attack chain discovery completed | Found: {_sanitize_log(len(chain_results.get('attack_chains', [])))} chains")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in attack chain discovery: {str(e)}")
+        logger.error(f"💥 Error in attack chain discovery: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -15716,7 +15700,7 @@ def threat_intelligence_feeds():
                 "error": "Indicators parameter is required"
             }), 400
 
-        logger.info(f"🧠 Correlating threat intelligence for {len(indicators)} indicators")
+        logger.info(f"🧠 Correlating threat intelligence for {_sanitize_log(len(indicators))} indicators")
 
         correlation_results = {
             "indicators_analyzed": indicators,
@@ -15760,7 +15744,7 @@ def threat_intelligence_feeds():
                     correlation_results["threat_score"] += 25
 
             except Exception as e:
-                logger.warning(f"Error analyzing CVE {cve_id}: {str(e)}")
+                logger.warning(f"Error analyzing CVE {_sanitize_log(cve_id)}: {_sanitize_log(str(e))}")
 
         # Process IP indicators (basic reputation check simulation)
         for ip in ip_indicators:
@@ -15822,11 +15806,11 @@ def threat_intelligence_feeds():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"🎯 Threat intelligence correlation completed | Threat Score: {correlation_results['threat_score']:.1f}")
+        logger.info(f"🎯 Threat intelligence correlation completed | Threat Score: {_sanitize_log(format(correlation_results['threat_score'], '.1f'))}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in threat intelligence: {str(e)}")
+        logger.error(f"💥 Error in threat intelligence: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -15848,7 +15832,7 @@ def zero_day_research():
                 "error": "Target software parameter is required"
             }), 400
 
-        logger.info(f"🔬 Starting zero-day research for {target_software} | Depth: {analysis_depth}")
+        logger.info(f"🔬 Starting zero-day research for {_sanitize_log(target_software)} | Depth: {_sanitize_log(analysis_depth)}")
 
         research_results = {
             "target_software": target_software,
@@ -15961,11 +15945,11 @@ def zero_day_research():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"🎯 Zero-day research completed | Risk Score: {research_results['risk_assessment']['risk_score']}")
+        logger.info(f"🎯 Zero-day research completed | Risk Score: {_sanitize_log(research_results['risk_assessment']['risk_score'])}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in zero-day research: {str(e)}")
+        logger.error(f"💥 Error in zero-day research: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -15988,7 +15972,7 @@ def advanced_payload_generation():
                 "error": "Attack type parameter is required"
             }), 400
 
-        logger.info(f"🎯 Generating advanced {attack_type} payload with {evasion_level} evasion")
+        logger.info(f"🎯 Generating advanced {_sanitize_log(attack_type)} payload with {_sanitize_log(evasion_level)} evasion")
 
         # Enhanced payload generation with contextual AI
         target_info = {
@@ -16099,11 +16083,11 @@ def advanced_payload_generation():
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"🎯 Advanced payload generation completed | Generated: {len(advanced_payloads)} payloads")
+        logger.info(f"🎯 Advanced payload generation completed | Generated: {_sanitize_log(len(advanced_payloads))} payloads")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"💥 Error in advanced payload generation: {str(e)}")
+        logger.error(f"💥 Error in advanced payload generation: {_sanitize_log(str(e))}")
         return jsonify({
             "success": False,
             "error": f"Server error: {str(e)}"
@@ -16141,7 +16125,7 @@ def create_ctf_challenge_workflow():
         # Generate workflow
         workflow = ctf_manager.create_ctf_challenge_workflow(challenge)
 
-        logger.info(f"🎯 CTF workflow created for {challenge_name} | Category: {category} | Difficulty: {difficulty}")
+        logger.info(f"🎯 CTF workflow created for {_sanitize_log(challenge_name)} | Category: {_sanitize_log(category)} | Difficulty: {_sanitize_log(difficulty)}")
         return jsonify({
             "success": True,
             "workflow": workflow,
@@ -16150,7 +16134,7 @@ def create_ctf_challenge_workflow():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating CTF workflow: {str(e)}")
+        logger.error(f"💥 Error creating CTF workflow: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/auto-solve-challenge", methods=["POST"])
@@ -16181,7 +16165,7 @@ def auto_solve_ctf_challenge():
         # Attempt automated solving
         result = ctf_automator.auto_solve_challenge(challenge)
 
-        logger.info(f"🤖 CTF auto-solve attempted for {challenge_name} | Status: {result['status']}")
+        logger.info(f"🤖 CTF auto-solve attempted for {_sanitize_log(challenge_name)} | Status: {_sanitize_log(result['status'])}")
         return jsonify({
             "success": True,
             "solve_result": result,
@@ -16190,7 +16174,7 @@ def auto_solve_ctf_challenge():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in CTF auto-solve: {str(e)}")
+        logger.error(f"💥 Error in CTF auto-solve: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/team-strategy", methods=["POST"])
@@ -16220,7 +16204,7 @@ def create_ctf_team_strategy():
         # Generate team strategy
         strategy = ctf_coordinator.optimize_team_strategy(challenges, team_skills)
 
-        logger.info(f"👥 CTF team strategy created | Challenges: {len(challenges)} | Team members: {len(team_skills)}")
+        logger.info(f"👥 CTF team strategy created | Challenges: {_sanitize_log(len(challenges))} | Team members: {_sanitize_log(len(team_skills))}")
         return jsonify({
             "success": True,
             "strategy": strategy,
@@ -16230,7 +16214,7 @@ def create_ctf_team_strategy():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error creating CTF team strategy: {str(e)}")
+        logger.error(f"💥 Error creating CTF team strategy: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/suggest-tools", methods=["POST"])
@@ -16253,10 +16237,10 @@ def suggest_ctf_tools():
         for tool in suggested_tools:
             try:
                 tool_commands[tool] = ctf_tools.get_tool_command(tool, "TARGET")
-            except:
+            except Exception:
                 tool_commands[tool] = f"{tool} TARGET"
 
-        logger.info(f"🔧 CTF tools suggested | Category: {category} | Tools: {len(suggested_tools)}")
+        logger.info(f"🔧 CTF tools suggested | Category: {_sanitize_log(category)} | Tools: {_sanitize_log(len(suggested_tools))}")
         return jsonify({
             "success": True,
             "suggested_tools": suggested_tools,
@@ -16267,7 +16251,7 @@ def suggest_ctf_tools():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error suggesting CTF tools: {str(e)}")
+        logger.error(f"💥 Error suggesting CTF tools: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/cryptography-solver", methods=["POST"])
@@ -16277,8 +16261,6 @@ def ctf_cryptography_solver():
         params = request.json
         cipher_text = params.get("cipher_text", "")
         cipher_type = params.get("cipher_type", "unknown")
-        key_hint = params.get("key_hint", "")
-        known_plaintext = params.get("known_plaintext", "")
         additional_info = params.get("additional_info", "")
 
         if not cipher_text:
@@ -16357,7 +16339,7 @@ def ctf_cryptography_solver():
                 "Try common key words"
             ])
 
-        logger.info(f"🔐 CTF crypto analysis completed | Type: {cipher_type} | Tools: {len(results['recommended_tools'])}")
+        logger.info(f"🔐 CTF crypto analysis completed | Type: {_sanitize_log(cipher_type)} | Tools: {_sanitize_log(len(results['recommended_tools']))}")
         return jsonify({
             "success": True,
             "analysis": results,
@@ -16365,7 +16347,7 @@ def ctf_cryptography_solver():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in CTF crypto solver: {str(e)}")
+        logger.error(f"💥 Error in CTF crypto solver: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/forensics-analyzer", methods=["POST"])
@@ -16500,7 +16482,7 @@ def ctf_forensics_analyzer():
                 "error": str(e)
             })
 
-        logger.info(f"🔍 CTF forensics analysis completed | File: {file_path} | Tools used: {len(results['recommended_tools'])}")
+        logger.info(f"🔍 CTF forensics analysis completed | File: {_sanitize_log(file_path)} | Tools used: {_sanitize_log(len(results['recommended_tools']))}")
         return jsonify({
             "success": True,
             "analysis": results,
@@ -16508,7 +16490,7 @@ def ctf_forensics_analyzer():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in CTF forensics analyzer: {str(e)}")
+        logger.error(f"💥 Error in CTF forensics analyzer: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/ctf/binary-analyzer", methods=["POST"])
@@ -16676,7 +16658,7 @@ def ctf_binary_analyzer():
         if "format string" in str(results["exploitation_hints"]).lower():
             results["recommended_tools"].append("format-string-exploiter")
 
-        logger.info(f"🔬 CTF binary analysis completed | Binary: {binary_path} | Hints: {len(results['exploitation_hints'])}")
+        logger.info(f"🔬 CTF binary analysis completed | Binary: {_sanitize_log(binary_path)} | Hints: {_sanitize_log(len(results['exploitation_hints']))}")
         return jsonify({
             "success": True,
             "analysis": results,
@@ -16684,7 +16666,7 @@ def ctf_binary_analyzer():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in CTF binary analyzer: {str(e)}")
+        logger.error(f"💥 Error in CTF binary analyzer: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -16705,7 +16687,7 @@ def execute_command_async():
         # Execute command asynchronously
         task_id = enhanced_process_manager.execute_command_async(command, context)
 
-        logger.info(f"🚀 Async command execution started | Task ID: {task_id}")
+        logger.info(f"🚀 Async command execution started | Task ID: {_sanitize_log(task_id)}")
         return jsonify({
             "success": True,
             "task_id": task_id,
@@ -16715,7 +16697,7 @@ def execute_command_async():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in async command execution: {str(e)}")
+        logger.error(f"💥 Error in async command execution: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/get-task-result/<task_id>", methods=["GET"])
@@ -16727,7 +16709,7 @@ def get_async_task_result(task_id):
         if result["status"] == "not_found":
             return jsonify({"error": "Task not found"}), 404
 
-        logger.info(f"📋 Task result retrieved | Task ID: {task_id} | Status: {result['status']}")
+        logger.info(f"📋 Task result retrieved | Task ID: {_sanitize_log(task_id)} | Status: {_sanitize_log(result['status'])}")
         return jsonify({
             "success": True,
             "task_id": task_id,
@@ -16736,7 +16718,7 @@ def get_async_task_result(task_id):
         })
 
     except Exception as e:
-        logger.error(f"💥 Error getting task result: {str(e)}")
+        logger.error(f"💥 Error getting task result: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/pool-stats", methods=["GET"])
@@ -16745,7 +16727,7 @@ def get_process_pool_stats():
     try:
         stats = enhanced_process_manager.get_comprehensive_stats()
 
-        logger.info(f"📊 Process pool stats retrieved | Active workers: {stats['process_pool']['active_workers']}")
+        logger.info(f"📊 Process pool stats retrieved | Active workers: {_sanitize_log(stats['process_pool']['active_workers'])}")
         return jsonify({
             "success": True,
             "stats": stats,
@@ -16753,7 +16735,7 @@ def get_process_pool_stats():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error getting pool stats: {str(e)}")
+        logger.error(f"💥 Error getting pool stats: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/cache-stats", methods=["GET"])
@@ -16762,7 +16744,7 @@ def get_cache_stats():
     try:
         cache_stats = enhanced_process_manager.cache.get_stats()
 
-        logger.info(f"💾 Cache stats retrieved | Hit rate: {cache_stats['hit_rate']:.1f}%")
+        logger.info(f"💾 Cache stats retrieved | Hit rate: {_sanitize_log(format(cache_stats['hit_rate'], '.1f'))}%")
         return jsonify({
             "success": True,
             "cache_stats": cache_stats,
@@ -16770,7 +16752,7 @@ def get_cache_stats():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error getting cache stats: {str(e)}")
+        logger.error(f"💥 Error getting cache stats: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/clear-cache", methods=["POST"])
@@ -16787,7 +16769,7 @@ def clear_process_cache():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error clearing cache: {str(e)}")
+        logger.error(f"💥 Error clearing cache: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/resource-usage", methods=["GET"])
@@ -16797,7 +16779,7 @@ def get_resource_usage():
         current_usage = enhanced_process_manager.resource_monitor.get_current_usage()
         usage_trends = enhanced_process_manager.resource_monitor.get_usage_trends()
 
-        logger.info(f"📈 Resource usage retrieved | CPU: {current_usage['cpu_percent']:.1f}% | Memory: {current_usage['memory_percent']:.1f}%")
+        logger.info(f"📈 Resource usage retrieved | CPU: {_sanitize_log(format(current_usage['cpu_percent'], '.1f'))}% | Memory: {_sanitize_log(format(current_usage['memory_percent'], '.1f'))}%")
         return jsonify({
             "success": True,
             "current_usage": current_usage,
@@ -16806,7 +16788,7 @@ def get_resource_usage():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error getting resource usage: {str(e)}")
+        logger.error(f"💥 Error getting resource usage: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/performance-dashboard", methods=["GET"])
@@ -16831,7 +16813,7 @@ def get_performance_dashboard():
             }
         }
 
-        logger.info(f"📊 Performance dashboard retrieved | Success rate: {dashboard_data.get('success_rate', 0):.1f}%")
+        logger.info(f"📊 Performance dashboard retrieved | Success rate: {_sanitize_log(format(dashboard_data.get('success_rate', 0), '.1f'))}%")
         return jsonify({
             "success": True,
             "dashboard": dashboard,
@@ -16839,7 +16821,7 @@ def get_performance_dashboard():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error getting performance dashboard: {str(e)}")
+        logger.error(f"💥 Error getting performance dashboard: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/terminate-gracefully/<int:pid>", methods=["POST"])
@@ -16852,7 +16834,7 @@ def terminate_process_gracefully(pid):
         success = enhanced_process_manager.terminate_process_gracefully(pid, timeout)
 
         if success:
-            logger.info(f"✅ Process {pid} terminated gracefully")
+            logger.info(f"✅ Process {_sanitize_log(pid)} terminated gracefully")
             return jsonify({
                 "success": True,
                 "message": f"Process {pid} terminated successfully",
@@ -16868,7 +16850,7 @@ def terminate_process_gracefully(pid):
             }), 400
 
     except Exception as e:
-        logger.error(f"💥 Error terminating process {pid}: {str(e)}")
+        logger.error(f"💥 Error terminating process {_sanitize_log(pid)}: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/auto-scaling", methods=["POST"])
@@ -16885,7 +16867,7 @@ def configure_auto_scaling():
         if thresholds:
             enhanced_process_manager.resource_thresholds.update(thresholds)
 
-        logger.info(f"⚙️ Auto-scaling configured | Enabled: {enabled}")
+        logger.info(f"⚙️ Auto-scaling configured | Enabled: {_sanitize_log(enabled)}")
         return jsonify({
             "success": True,
             "auto_scaling_enabled": enabled,
@@ -16894,7 +16876,7 @@ def configure_auto_scaling():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error configuring auto-scaling: {str(e)}")
+        logger.error(f"💥 Error configuring auto-scaling: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/scale-pool", methods=["POST"])
@@ -16928,7 +16910,7 @@ def manual_scale_pool():
             else:
                 return jsonify({"error": f"Cannot scale down: would go below min workers ({min_workers})"}), 400
 
-        logger.info(f"📏 Manual scaling | {message} | Workers: {current_workers} → {new_workers}")
+        logger.info(f"📏 Manual scaling | {_sanitize_log(message)} | Workers: {_sanitize_log(current_workers)} → {_sanitize_log(new_workers)}")
         return jsonify({
             "success": True,
             "message": message,
@@ -16938,7 +16920,7 @@ def manual_scale_pool():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error scaling pool: {str(e)}")
+        logger.error(f"💥 Error scaling pool: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/process/health-check", methods=["GET"])
@@ -17022,7 +17004,7 @@ def process_health_check():
         if "Low cache hit rate" in issues:
             health_report["recommendations"].append("Review cache TTL settings or increase cache size")
 
-        logger.info(f"🏥 Health check completed | Status: {status} | Score: {health_score}/100")
+        logger.info(f"🏥 Health check completed | Status: {_sanitize_log(status)} | Score: {_sanitize_log(health_score)}/100")
         return jsonify({
             "success": True,
             "health_report": health_report,
@@ -17030,7 +17012,7 @@ def process_health_check():
         })
 
     except Exception as e:
-        logger.error(f"💥 Error in health check: {str(e)}")
+        logger.error(f"💥 Error in health check: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # ============================================================================
@@ -17052,7 +17034,7 @@ def get_error_statistics():
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
-        logger.error(f"Error getting error statistics: {str(e)}")
+        logger.error(f"Error getting error statistics: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/test-recovery", methods=["POST"])
@@ -17098,7 +17080,7 @@ def test_error_recovery():
         })
 
     except Exception as e:
-        logger.error(f"Error testing recovery system: {str(e)}")
+        logger.error(f"Error testing recovery system: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/fallback-chains", methods=["GET"])
@@ -17126,7 +17108,7 @@ def get_fallback_chains():
             })
 
     except Exception as e:
-        logger.error(f"Error getting fallback chains: {str(e)}")
+        logger.error(f"Error getting fallback chains: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/execute-with-recovery", methods=["POST"])
@@ -17159,7 +17141,7 @@ def execute_with_recovery_endpoint():
         })
 
     except Exception as e:
-        logger.error(f"Error executing command with recovery: {str(e)}")
+        logger.error(f"Error executing command with recovery: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/classify-error", methods=["POST"])
@@ -17191,7 +17173,7 @@ def classify_error_endpoint():
         })
 
     except Exception as e:
-        logger.error(f"Error classifying error: {str(e)}")
+        logger.error(f"Error classifying error: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/parameter-adjustments", methods=["POST"])
@@ -17224,7 +17206,7 @@ def get_parameter_adjustments():
         })
 
     except Exception as e:
-        logger.error(f"Error getting parameter adjustments: {str(e)}")
+        logger.error(f"Error getting parameter adjustments: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route("/api/error-handling/alternative-tools", methods=["GET"])
@@ -17247,7 +17229,7 @@ def get_alternative_tools():
         })
 
     except Exception as e:
-        logger.error(f"Error getting alternative tools: {str(e)}")
+        logger.error(f"Error getting alternative tools: {_sanitize_log(str(e))}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Create the banner after all classes are defined

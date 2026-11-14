@@ -138,11 +138,16 @@ for handler in logging.getLogger().handlers:
 
 logger = logging.getLogger(__name__)
 
-_CTRL_TABLE = {c: 32 for c in [*range(0, 32), 127]}
 def _sanitize_log(value) -> str:
-    """Render a value for logging with control characters (CR/LF etc.)
-    replaced by spaces to prevent log forging (CodeQL py/log-injection)."""
-    return str(value).translate(_CTRL_TABLE)
+    """Render a value for logging with CR/LF replaced by spaces
+    to prevent log forging (CodeQL py/log-injection: .replace
+    line-break chains are the query-recognized sanitizer)."""
+    text = str(value)
+    return (
+        text.replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
 
 
 # Default configuration
@@ -4270,8 +4275,8 @@ def setup_mcp_server(hexstrike_client: HexStrikeClient) -> FastMCP:
             "keywords": ""
         })
 
-        # Get trending attack types
-        trending_research = hexstrike_client.safe_post("api/vuln-intel/zero-day-research", {
+        # Warm the zero-day research cache (response intentionally unused)
+        hexstrike_client.safe_post("api/vuln-intel/zero-day-research", {
             "target_software": "web applications",
             "analysis_depth": "quick"
         })

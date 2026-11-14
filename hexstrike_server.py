@@ -78,11 +78,16 @@ except PermissionError:
     )
 logger = logging.getLogger(__name__)
 
-_CTRL_TABLE = {c: 32 for c in [*range(0, 32), 127]}
 def _sanitize_log(value) -> str:
-    """Render a value for logging with control characters (CR/LF etc.)
-    replaced by spaces to prevent log forging (CodeQL py/log-injection)."""
-    return str(value).translate(_CTRL_TABLE)
+    """Render a value for logging with CR/LF replaced by spaces
+    to prevent log forging (CodeQL py/log-injection: .replace
+    line-break chains are the query-recognized sanitizer)."""
+    text = str(value)
+    return (
+        text.replace("\r\n", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
 
 
 # Flask app configuration

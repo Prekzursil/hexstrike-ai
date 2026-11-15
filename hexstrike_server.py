@@ -17264,6 +17264,7 @@ if __name__ == "__main__":
         if line.strip():
             logger.info(line)
 
-    # Bind the configured host (default 127.0.0.1) instead of all interfaces;
-    # Werkzeug debug mode is only ever enabled on a loopback bind.
-    app.run(host=API_HOST, port=API_PORT, debug=DEBUG_MODE and API_HOST in ("127.0.0.1", "localhost"))
+    # Bind the configured host (default 127.0.0.1) instead of all interfaces.
+    # Werkzeug debug mode is never enabled: the debugger allows arbitrary code
+    # execution (CodeQL py/flask-debug); DEBUG_MODE only raises the log level.
+    app.run(host=API_HOST, port=API_PORT)

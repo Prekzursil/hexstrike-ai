@@ -6961,7 +6961,7 @@ class EnhancedCommandExecutor:
             # Log the beautiful summary
             for line in results_summary.strip().split('\n'):
                 if line.strip():
-                    logger.info(line)
+                    logger.info(_sanitize_log(line))
 
             return {
                 "stdout": self.stdout_data,
@@ -7283,7 +7283,6 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
 
     def _analyze_vulnerability_details(self, description, cve_data):
         """Analyze CVE data to extract specific vulnerability details"""
-        import re  # Import at the top of the method
         
         vuln_type = "generic"
         specific_details = {
@@ -15013,9 +15012,7 @@ def jwt_analyzer():
         try:
             parts = jwt_token.split('.')
             if len(parts) >= 2:
-                # Decode header
-                import base64
-                import json
+                # Decode header (base64/json imported at module level)
 
                 # Add padding if needed
                 header_b64 = parts[0] + '=' * (4 - len(parts[0]) % 4)
@@ -15141,7 +15138,6 @@ def api_schema_analyzer():
 
         # Parse schema based on type
         try:
-            import json
             schema_data = json.loads(schema_content)
 
             if schema_type.lower() in ["openapi", "swagger"]:
@@ -17268,4 +17264,7 @@ if __name__ == "__main__":
         if line.strip():
             logger.info(line)
 
-    app.run(host="0.0.0.0", port=API_PORT, debug=DEBUG_MODE)
+    # Bind the configured host (default 127.0.0.1) instead of all interfaces.
+    # Werkzeug debug mode is never enabled: the debugger allows arbitrary code
+    # execution (CodeQL py/flask-debug); DEBUG_MODE only raises the log level.
+    app.run(host=API_HOST, port=API_PORT)

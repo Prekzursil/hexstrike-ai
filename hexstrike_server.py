@@ -7365,7 +7365,7 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
             vuln_type = "buffer_overflow"
             
         # Extract software and version info
-        software_match = re.search(r'(\w+(?:\s+\w+){0,8}?)\s+v?(\d+(?:\.\d+)*)', description)
+        software_match = re.search(r'([A-Za-z0-9][A-Za-z0-9 ]*?)\s+v?(\d+(?:\.\d+)*)', description)
         if software_match:
             specific_details["software"] = software_match.group(1)
             specific_details["version"] = software_match.group(2)

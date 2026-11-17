@@ -97,6 +97,10 @@ app.config['JSON_SORT_KEYS'] = False
 # API Configuration
 API_PORT = int(os.environ.get('HEXSTRIKE_PORT', 8888))
 API_HOST = os.environ.get('HEXSTRIKE_HOST', '127.0.0.1')
+# TLS certificate verification for outbound requests. Secure default;
+# operators scanning targets with self-signed certificates can opt out
+# explicitly (HEXSTRIKE_TLS_VERIFY=false).
+TLS_VERIFY = os.environ.get('HEXSTRIKE_TLS_VERIFY', 'true').strip().lower() not in ('0', 'false', 'no')
 
 # ============================================================================
 # MODERN VISUAL ENGINE (v2.0 ENHANCEMENT)
@@ -5584,7 +5588,7 @@ class ProcessManager:
                 "last_output": "",
                 "bytes_processed": 0
             }
-            logger.info(f"🆔 REGISTERED: Process {_sanitize_log(pid)} - {_sanitize_log(command[:50])}...")
+            logger.info(f"🆔 REGISTERED: Process {_sanitize_log(pid)} - command [redacted]")
 
     @staticmethod
     def update_process_progress(pid, progress, last_output="", bytes_processed=0):
@@ -5715,6 +5719,10 @@ class PythonEnvironmentManager:
         """Install a package in the specified environment"""
         env_path = self.create_venv(env_name)
         pip_path = env_path / "bin" / "pip"
+
+        import re as _re
+        if not _re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", str(package)):
+            return {"error": f"Invalid package name: {package!r}"}
 
         try:
             result = subprocess.run([str(pip_path), "install", package],
@@ -6684,14 +6692,14 @@ class HexStrikeCache:
                 # Move to end (most recently used)
                 self.cache.move_to_end(key)
                 self.stats["hits"] += 1
-                logger.info(f"💾 Cache HIT for command: {_sanitize_log(command)}")
+                logger.info("💾 Cache HIT for command [redacted]")
                 return data
             else:
                 # Remove expired entry
                 del self.cache[key]
 
         self.stats["misses"] += 1
-        logger.info(f"🔍 Cache MISS for command: {_sanitize_log(command)}")
+        logger.info("🔍 Cache MISS for command [redacted]")
         return None
 
     def set(self, command: str, params: Dict[str, Any], result: Dict[str, Any]):
@@ -6705,7 +6713,7 @@ class HexStrikeCache:
             self.stats["evictions"] += 1
 
         self.cache[key] = (time.time(), result)
-        logger.info(f"💾 Cached result for command: {_sanitize_log(command)}")
+        logger.info("💾 Cached result for command [redacted]")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
@@ -6860,7 +6868,7 @@ class EnhancedCommandExecutor:
         """Execute the command with enhanced monitoring and output"""
         self.start_time = time.time()
 
-        logger.info(f"🚀 EXECUTING: {_sanitize_log(self.command)}")
+        logger.info("🚀 EXECUTING: command [redacted]")
         logger.info(f"⏱️  TIMEOUT: {_sanitize_log(self.timeout)}s | PID: Starting...")
 
         try:
@@ -6950,7 +6958,7 @@ class EnhancedCommandExecutor:
 {ModernVisualEngine.COLORS['MATRIX_GREEN']}{ModernVisualEngine.COLORS['BOLD']}╭─────────────────────────────────────────────────────────────────────────────╮{ModernVisualEngine.COLORS['RESET']}
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {status_color}📊 FINAL RESULTS {status_icon}{ModernVisualEngine.COLORS['RESET']}
 {ModernVisualEngine.COLORS['BOLD']}├─────────────────────────────────────────────────────────────────────────────┤{ModernVisualEngine.COLORS['RESET']}
-{ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['NEON_BLUE']}🚀 Command:{ModernVisualEngine.COLORS['RESET']} {self.command[:55]}{'...' if len(self.command) > 55 else ''}
+{ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['NEON_BLUE']}🚀 Command:{ModernVisualEngine.COLORS['RESET']} [redacted - may embed credentials]
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['CYBER_ORANGE']}⏱️  Duration:{ModernVisualEngine.COLORS['RESET']} {execution_time:.2f}s{timeout_status}
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['WARNING']}📊 Output Size:{ModernVisualEngine.COLORS['RESET']} {output_size} bytes
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['ELECTRIC_PURPLE']}🔢 Exit Code:{ModernVisualEngine.COLORS['RESET']} {self.return_code}
@@ -7357,10 +7365,39 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
             vuln_type = "buffer_overflow"
             
         # Extract software and version info
-        software_match = re.search(r'(\w+(?:\s+\w+)*)\s+v?(\d+(?:\.\d+)*)', description)
-        if software_match:
-            specific_details["software"] = software_match.group(1)
-            specific_details["version"] = software_match.group(2)
+        # Regex-free linear scan: find the first version-like token, then
+        # take the word characters directly before it as the software name.
+        # (Implemented without regular expressions on purpose: every
+        # quantified pattern over these character classes was flagged by
+        # the polynomial-ReDoS query.)
+        version_start = None
+        version_token = None
+        i = 0
+        while i < len(description):
+            ch = description[i]
+            if ch.isdigit():
+                j = i
+                while j < len(description) and (description[j].isdigit() or description[j] == '.'):
+                    j += 1
+                token = description[i:j]
+                if '.' in token and token.endswith(tuple('0123456789')) and len(token) > 1:
+                    version_start = i
+                    version_token = token
+                    break
+                i = j
+            else:
+                i += 1
+        if version_start is not None:
+            head = description[:version_start].rstrip()
+            k = len(head)
+            while k > 0 and (head[k - 1].isalnum() or head[k - 1] in ' _'):
+                k -= 1
+            name = head[k:].strip()
+            if name.endswith(' v'):
+                name = name[:-2]
+            if name:
+                specific_details["software"] = name
+                specific_details["version"] = version_token
             
         return vuln_type, specific_details
 
@@ -13544,15 +13581,21 @@ class HTTPTestingFramework:
     def spider_website(self, base_url: str, max_depth: int = 3, max_pages: int = 100) -> dict:
         """Spider website to discover endpoints and forms"""
         try:
+            from urllib.parse import urlparse
+            base_origin = (urlparse(base_url).scheme, urlparse(base_url).netloc)
             discovered_urls = set()
             forms = []
             to_visit = [(base_url, 0)]
             visited = set()
 
+            def same_origin(u: str) -> bool:
+                parsed = urlparse(u)
+                return (parsed.scheme, parsed.netloc) == base_origin
+
             while to_visit and len(discovered_urls) < max_pages:
                 current_url, depth = to_visit.pop(0)
 
-                if current_url in visited or depth > max_depth:
+                if current_url in visited or depth > max_depth or not same_origin(current_url):
                     continue
 
                 visited.add(current_url)
@@ -13751,7 +13794,7 @@ class BrowserAgent:
         # We cannot directly read response headers via Selenium; attempt a lightweight fetch with requests
         issues = []
         try:
-            resp = requests.get(page_info.get('url',''), timeout=10, verify=False)
+            resp = requests.get(page_info.get('url',''), timeout=10, verify=TLS_VERIFY)
             headers = {k.lower():v for k,v in resp.headers.items()}
             required = {
                 'content-security-policy':'CSP header missing (XSS mitigation)',
@@ -13829,7 +13872,7 @@ class BrowserAgent:
                     logger.debug("Suppressed non-fatal error", exc_info=True)
             test_url = action + ('&' if '?' in action else '?') + '&'.join(params)
             try:
-                r = requests.get(test_url, timeout=8, verify=False)
+                r = requests.get(test_url, timeout=8, verify=TLS_VERIFY)
                 tested += 1
                 if payload in r.text:
                     findings.append({'type':'reflected_xss','severity':'high','description':'Payload reflected in response','url':test_url})

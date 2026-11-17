@@ -78,18 +78,6 @@ except PermissionError:
     )
 logger = logging.getLogger(__name__)
 
-def _command_digest(command) -> str:
-    """Non-reversible identifier for a command line.
-
-    Tool command lines routinely embed credentials (API keys, bearer
-    tokens, passwords passed as flags). They must never be written to
-    logs in clear text; a short digest keeps log lines correlatable
-    without leaking the secret material.
-    """
-    import hashlib
-    return hashlib.sha256(str(command).encode("utf-8", "replace")).hexdigest()[:12]
-
-
 def _sanitize_log(value) -> str:
     """Render a value for logging with CR/LF replaced by spaces
     to prevent log forging (CodeQL py/log-injection: .replace
@@ -5600,7 +5588,7 @@ class ProcessManager:
                 "last_output": "",
                 "bytes_processed": 0
             }
-            logger.info(f"🆔 REGISTERED: Process {_sanitize_log(pid)} - cmd#{_command_digest(command)}")
+            logger.info(f"🆔 REGISTERED: Process {_sanitize_log(pid)} - command [redacted]")
 
     @staticmethod
     def update_process_progress(pid, progress, last_output="", bytes_processed=0):
@@ -6704,14 +6692,14 @@ class HexStrikeCache:
                 # Move to end (most recently used)
                 self.cache.move_to_end(key)
                 self.stats["hits"] += 1
-                logger.info(f"💾 Cache HIT for command: cmd#{_command_digest(command)}")
+                logger.info("💾 Cache HIT for command [redacted]")
                 return data
             else:
                 # Remove expired entry
                 del self.cache[key]
 
         self.stats["misses"] += 1
-        logger.info(f"🔍 Cache MISS for command: cmd#{_command_digest(command)}")
+        logger.info("🔍 Cache MISS for command [redacted]")
         return None
 
     def set(self, command: str, params: Dict[str, Any], result: Dict[str, Any]):
@@ -6725,7 +6713,7 @@ class HexStrikeCache:
             self.stats["evictions"] += 1
 
         self.cache[key] = (time.time(), result)
-        logger.info(f"💾 Cached result for command: cmd#{_command_digest(command)}")
+        logger.info("💾 Cached result for command [redacted]")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
@@ -6880,7 +6868,7 @@ class EnhancedCommandExecutor:
         """Execute the command with enhanced monitoring and output"""
         self.start_time = time.time()
 
-        logger.info(f"🚀 EXECUTING: cmd#{_command_digest(self.command)}")
+        logger.info("🚀 EXECUTING: command [redacted]")
         logger.info(f"⏱️  TIMEOUT: {_sanitize_log(self.timeout)}s | PID: Starting...")
 
         try:
@@ -6970,7 +6958,7 @@ class EnhancedCommandExecutor:
 {ModernVisualEngine.COLORS['MATRIX_GREEN']}{ModernVisualEngine.COLORS['BOLD']}╭─────────────────────────────────────────────────────────────────────────────╮{ModernVisualEngine.COLORS['RESET']}
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {status_color}📊 FINAL RESULTS {status_icon}{ModernVisualEngine.COLORS['RESET']}
 {ModernVisualEngine.COLORS['BOLD']}├─────────────────────────────────────────────────────────────────────────────┤{ModernVisualEngine.COLORS['RESET']}
-{ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['NEON_BLUE']}🚀 Command:{ModernVisualEngine.COLORS['RESET']} cmd#{_command_digest(self.command)}
+{ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['NEON_BLUE']}🚀 Command:{ModernVisualEngine.COLORS['RESET']} [redacted - may embed credentials]
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['CYBER_ORANGE']}⏱️  Duration:{ModernVisualEngine.COLORS['RESET']} {execution_time:.2f}s{timeout_status}
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['WARNING']}📊 Output Size:{ModernVisualEngine.COLORS['RESET']} {output_size} bytes
 {ModernVisualEngine.COLORS['BOLD']}│{ModernVisualEngine.COLORS['RESET']} {ModernVisualEngine.COLORS['ELECTRIC_PURPLE']}🔢 Exit Code:{ModernVisualEngine.COLORS['RESET']} {self.return_code}

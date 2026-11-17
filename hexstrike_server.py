@@ -7368,7 +7368,7 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
         # Two-step linear scan (no ambiguous quantifier pairing): find the
         # first version-like token, then take the word characters directly
         # before it as the software name.
-        version_match = re.search(r'v?\d+(?:\.\d+)+', description)
+        version_match = re.search(r'(?<![\w.])v?[\d.]+\d', description)
         if version_match:
             head = description[:version_match.start()].rstrip()
             name_match = re.search(r'[A-Za-z0-9][A-Za-z0-9 _]*\Z', head)

@@ -7365,16 +7365,39 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
             vuln_type = "buffer_overflow"
             
         # Extract software and version info
-        # Two-step linear scan (no ambiguous quantifier pairing): find the
-        # first version-like token, then take the word characters directly
-        # before it as the software name.
-        version_match = re.search(r'(?<![\w.])v?[\d.]+\d', description)
-        if version_match:
-            head = description[:version_match.start()].rstrip()
-            name_match = re.search(r'[A-Za-z0-9][A-Za-z0-9 _]*\Z', head)
-            if name_match:
-                specific_details["software"] = name_match.group(0).strip()
-                specific_details["version"] = version_match.group(0).lstrip('v')
+        # Regex-free linear scan: find the first version-like token, then
+        # take the word characters directly before it as the software name.
+        # (Implemented without regular expressions on purpose: every
+        # quantified pattern over these character classes was flagged by
+        # the polynomial-ReDoS query.)
+        version_start = None
+        version_token = None
+        i = 0
+        while i < len(description):
+            ch = description[i]
+            if ch.isdigit():
+                j = i
+                while j < len(description) and (description[j].isdigit() or description[j] == '.'):
+                    j += 1
+                token = description[i:j]
+                if '.' in token and token.endswith(tuple('0123456789')) and len(token) > 1:
+                    version_start = i
+                    version_token = token
+                    break
+                i = j
+            else:
+                i += 1
+        if version_start is not None:
+            head = description[:version_start].rstrip()
+            k = len(head)
+            while k > 0 and (head[k - 1].isalnum() or head[k - 1] in ' _'):
+                k -= 1
+            name = head[k:].strip()
+            if name.endswith(' v'):
+                name = name[:-2]
+            if name:
+                specific_details["software"] = name
+                specific_details["version"] = version_token
             
         return vuln_type, specific_details
 

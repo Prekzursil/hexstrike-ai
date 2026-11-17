@@ -7365,10 +7365,16 @@ exec(base64.b64decode('{base64.b64encode(code.encode()).decode()}'))
             vuln_type = "buffer_overflow"
             
         # Extract software and version info
-        software_match = re.search(r'([A-Za-z0-9][A-Za-z0-9 ]*?)\s+v?(\d+(?:\.\d+)*)', description)
-        if software_match:
-            specific_details["software"] = software_match.group(1)
-            specific_details["version"] = software_match.group(2)
+        # Two-step linear scan (no ambiguous quantifier pairing): find the
+        # first version-like token, then take the word characters directly
+        # before it as the software name.
+        version_match = re.search(r'v?\d+(?:\.\d+)+', description)
+        if version_match:
+            head = description[:version_match.start()].rstrip()
+            name_match = re.search(r'[A-Za-z0-9][A-Za-z0-9 _]*\Z', head)
+            if name_match:
+                specific_details["software"] = name_match.group(0).strip()
+                specific_details["version"] = version_match.group(0).lstrip('v')
             
         return vuln_type, specific_details
 
